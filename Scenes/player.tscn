@@ -1,0 +1,64 @@
+[gd_scene load_steps=8 format=3 uid="uid://c4lot0lmo8fdt"]
+
+[ext_resource type="Script" uid="uid://cxpdc72uahs6q" path="res://Scripts/player.gd" id="1_onrkg"]
+[ext_resource type="PackedScene" uid="uid://ipabj7iof7sc" path="res://Scenes/bullet.tscn" id="2_hqtel"]
+[ext_resource type="Texture2D" uid="uid://b36jrcya87ivr" path="res://icon.svg" id="2_i3pqv"]
+[ext_resource type="PackedScene" uid="uid://c2blw2s7g5vlk" path="res://Scenes/railgun_bullet.tscn" id="3_fkybt"]
+[ext_resource type="Script" uid="uid://b5nmc6xponcw5" path="res://Scripts/camera.gd" id="4_hqtel"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_hqtel"]
+size = Vector2(64, 64)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_hqtel"]
+radius = 55.0
+
+[node name="Player" type="CharacterBody2D" groups=["player"]]
+script = ExtResource("1_onrkg")
+bullet_scene = ExtResource("2_hqtel")
+railgun_scene = ExtResource("3_fkybt")
+wall_jump_push = 1500.0
+recoil_force = 2500.0
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("2_i3pqv")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_hqtel")
+
+[node name="ParryBox" type="Area2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ParryBox"]
+shape = SubResource("CircleShape2D_hqtel")
+
+[node name="ParryTimer" type="Timer" parent="."]
+one_shot = true
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="SkewContainer" type="Node2D" parent="UI"]
+skew = -0.0052359877
+
+[node name="AmmoLabel" type="Label" parent="UI/SkewContainer"]
+unique_name_in_owner = true
+offset_right = 40.0
+offset_bottom = 23.0
+
+[node name="Camera2D" type="Camera2D" parent="."]
+script = ExtResource("4_hqtel")
+
+[node name="ParryCooldownTimer" type="Timer" parent="."]
+wait_time = 1.5
+one_shot = true
+
+[node name="GunRay" type="RayCast2D" parent="."]
+target_position = Vector2(300, 0)
+
+[node name="DashTimer" type="Timer" parent="."]
+wait_time = 0.2
+one_shot = true
+
+[connection signal="area_entered" from="ParryBox" to="." method="_on_parry_box_area_entered"]
+[connection signal="timeout" from="ParryTimer" to="." method="_on_parry_timer_timeout"]
+[connection signal="timeout" from="ParryCooldownTimer" to="." method="_on_parry_cooldown_timer_timeout"]
+[connection signal="timeout" from="DashTimer" to="." method="_on_dash_timer_timeout"]
