@@ -53,11 +53,13 @@ var ui_time = 0.0
 var popup_scene = preload("res://Scenes/popup.tscn")
 
 func _ready() -> void:
+	# --- COLLISION FIX ---
+	# Disable Mask 3 (Enemy Layer) so Player doesn't get stuck on bosses
+	# Assuming Layer 3 is Enemy. Value 4 = Bit 3.
+	set_collision_mask_value(3, false)
+	
 	current_ammo = start_ammo
-	
-	# Store the CONTAINER position, not the label, so we shake the whole block
 	ui_origin_pos = ui_container.position 
-	
 	update_ui()
 	parry_box.monitoring = false 
 	parry_box.monitorable = false
@@ -328,3 +330,19 @@ func shake_ui():
 	tween.chain().tween_property(ui_container, "scale", Vector2(1.0, 1.0), 0.1)
 	tween.tween_property(label_ammo, "modulate", Color(1, 1, 1), 0.2)
 	tween.tween_property(ui_container, "position", ui_origin_pos, 0.1)
+
+func on_parry_success():
+	# Reset parry window
+	cooldown_timer.start(parry_success_cooldown)
+	spawn_popup("PARRIED!", Color(0, 1, 1))
+	get_tree().call_group("camera", "add_shake", 0.5)
+	
+	# Refill Ammo
+	current_ammo = min(current_ammo + 2, max_ammo)
+	update_ui()
+	shake_ui()
+	frame_freeze(0.1, 0.05)
+	
+	# Close the parry box immediately
+	parry_box.set_deferred("monitoring", false) 
+	current_state = State.IDLE

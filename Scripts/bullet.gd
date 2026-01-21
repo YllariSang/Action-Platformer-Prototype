@@ -5,10 +5,13 @@ var damage = 15
 var direction = Vector2.ZERO
 
 func _ready():
+	# CHANGE: Force the bullet to detect Walls (1) and Enemies (4)
+	# 1 + 4 = 5
+	collision_mask = 5 
+	
 	if direction != Vector2.ZERO:
 		rotation = direction.angle()
 	
-	# Connect signals
 	body_entered.connect(_on_body_entered)
 	area_entered.connect(_on_area_entered)
 	

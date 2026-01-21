@@ -51,16 +51,21 @@ func get_parried(should_reflect = false):
 	if is_reflected: return 
 	
 	if should_reflect:
-		# --- FULL SPARK: REFLECT! ---
 		is_reflected = true
 		direction = -direction 
 		speed *= 2.0 
 		modulate = Color(0, 1, 1) # Cyan
 		scale *= 1.5
+		
+		# --- THE FIX ---
+		# Enable detection of Layer 3 (Enemies). 
+		# Value 4 represents Bit 3.
+		# We use the bitwise OR operator (|) to add it to the existing mask.
+		collision_mask = collision_mask | 4 
+		
 		print("Bullet Reflected (Full Spark Bonus!)")
 		
 	else:
-		# --- NOT FULL: JUST DESTROY ---
 		spawn_pop()
 		queue_free()
 

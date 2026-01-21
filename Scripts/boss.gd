@@ -36,16 +36,30 @@ func _ready():
 	health_bar.value = hp
 	health_bar.visible = false 
 	
-	change_state(State.INACTIVE) 
+	# --- COLLISION FIX ---
+	# Ensure boss hits Walls (1) but NOT Player (2)
+	collision_layer = 4 # Enemy Layer (Bit 3)
+	collision_mask = 1  # Wall Layer (Bit 1)
+	
+	change_state(State.INACTIVE)
 
 func start_fight():
 	if current_state == State.INACTIVE:
 		change_state(State.INTRO)
 
 func _physics_process(delta):
+	# 1. Soft Collision (Force Push)
+	if current_state != State.DYING and current_state != State.INACTIVE and player_ref:
+		var dist = global_position.distance_to(player_ref.global_position)
+		if dist < 100.0: 
+			var push_dir = (player_ref.global_position - global_position).normalized()
+			# CHANGE: Modify global_position directly to override player input
+			player_ref.global_position += push_dir * 400 * delta
+			
 	match current_state:
 		State.SPIRAL: process_spiral(delta)
 		State.SHOTGUN: process_shotgun()
+
 
 func change_state(new_state):
 	# 1. GUARD CLAUSE: If we are dead, IGNORE all other orders.

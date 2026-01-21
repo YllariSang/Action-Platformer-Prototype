@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3 uid="uid://bs22dj1xxcs4u"]
+
+[ext_resource type="PackedScene" uid="uid://23dmsocl06t7" path="res://Scenes/enemy_bullet.tscn" id="1_cc2vq"]
+[ext_resource type="Script" uid="uid://cfplofgsmph57" path="res://Scripts/homing_bullet.gd" id="2_skakj"]
+
+[node name="HomingBullet" instance=ExtResource("1_cc2vq")]
+script = ExtResource("2_skakj")
+steer_force = 50.0
+homing_speed = 300.0

@@ -7,6 +7,9 @@ var direction = Vector2.RIGHT
 var explosion_scene = preload("res://Scenes/explosion.tscn")
 
 func _ready():
+	# CHANGE: Force mask to see Enemies
+	collision_mask = 5
+	
 	rotation = direction.angle()
 	get_tree().call_group("camera", "add_shake", 0.3)
 	
