@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3 uid="uid://8abwvld7ofuy"]
+
+[ext_resource type="Script" uid="uid://djh2lqfl37ksu" path="res://Scripts/popup.gd" id="1_2nprw"]
+
+[node name="Popup" type="Marker2D"]
+script = ExtResource("1_2nprw")
+
+[node name="Label" type="Label" parent="."]
+offset_left = -50.0
+offset_top = -25.0
+offset_right = 50.0
+offset_bottom = 25.0
+horizontal_alignment = 1
+vertical_alignment = 1

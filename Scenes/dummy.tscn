@@ -1,0 +1,32 @@
+[gd_scene load_steps=5 format=3 uid="uid://dm63e7aht846i"]
+
+[ext_resource type="Script" uid="uid://qxwrm2uvk2tc" path="res://Scripts/dummy.gd" id="1_xmspm"]
+[ext_resource type="Texture2D" uid="uid://b36jrcya87ivr" path="res://icon.svg" id="2_0umox"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_1324b"]
+radius = 70.0
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_xmspm"]
+size = Vector2(64, 64)
+
+[node name="Dummy" type="Node2D"]
+script = ExtResource("1_xmspm")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+modulate = Color(1, 0.4603749, 0.3981218, 1)
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("2_0umox")
+
+[node name="AttackTimer" type="Timer" parent="."]
+wait_time = 3.0
+autostart = true
+
+[node name="AttackArea" type="Area2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="AttackArea"]
+shape = SubResource("CircleShape2D_1324b")
+
+[node name="Hurtbox" type="Area2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hurtbox"]
+shape = SubResource("RectangleShape2D_xmspm")

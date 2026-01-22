@@ -1,0 +1,59 @@
+[gd_scene load_steps=9 format=3 uid="uid://wsc8v5qou1jn"]
+
+[ext_resource type="Script" uid="uid://wkuqg10nc4ka" path="res://Scripts/boss.gd" id="1_skx2t"]
+[ext_resource type="PackedScene" uid="uid://23dmsocl06t7" path="res://Scenes/enemy_bullet.tscn" id="2_lnbgr"]
+[ext_resource type="Texture2D" uid="uid://b36jrcya87ivr" path="res://icon.svg" id="3_o1i15"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_we8h1"]
+size = Vector2(192, 192)
+
+[sub_resource type="Gradient" id="Gradient_cxrok"]
+colors = PackedColorArray(0, 0, 0, 1, 0.48962224, 0.48962224, 0.48962218, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_ukjjc"]
+gradient = SubResource("Gradient_cxrok")
+width = 800
+height = 20
+
+[sub_resource type="Gradient" id="Gradient_ukjjc"]
+colors = PackedColorArray(0.70980394, 0, 0.6117647, 1, 1, 0.23529412, 0, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_n725y"]
+gradient = SubResource("Gradient_ukjjc")
+width = 800
+height = 20
+
+[node name="Boss" type="CharacterBody2D"]
+script = ExtResource("1_skx2t")
+bullet_scene = ExtResource("2_lnbgr")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(1.5, 1.5)
+texture = ExtResource("3_o1i15")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_we8h1")
+
+[node name="StateTimer" type="Timer" parent="."]
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="HealthBar" type="TextureProgressBar" parent="CanvasLayer"]
+custom_minimum_size = Vector2(800, 20)
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -400.0
+offset_top = -64.0
+offset_right = 400.0
+grow_horizontal = 2
+grow_vertical = 0
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture_under = SubResource("GradientTexture2D_ukjjc")
+texture_progress = SubResource("GradientTexture2D_n725y")
+
+[connection signal="timeout" from="StateTimer" to="." method="_on_state_timer_timeout"]
+[connection signal="changed" from="CanvasLayer/HealthBar" to="." method="_on_health_bar_changed"]

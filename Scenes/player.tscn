@@ -1,0 +1,105 @@
+[gd_scene load_steps=14 format=3 uid="uid://c4lot0lmo8fdt"]
+
+[ext_resource type="Script" uid="uid://cxpdc72uahs6q" path="res://Scripts/player.gd" id="1_onrkg"]
+[ext_resource type="PackedScene" uid="uid://ipabj7iof7sc" path="res://Scenes/bullet.tscn" id="2_hqtel"]
+[ext_resource type="Texture2D" uid="uid://b36jrcya87ivr" path="res://icon.svg" id="2_i3pqv"]
+[ext_resource type="PackedScene" uid="uid://c2blw2s7g5vlk" path="res://Scenes/railgun_bullet.tscn" id="3_fkybt"]
+[ext_resource type="Script" uid="uid://b5nmc6xponcw5" path="res://Scripts/camera.gd" id="4_hqtel"]
+
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_fkybt"]
+blend_mode = 1
+
+[sub_resource type="Gradient" id="Gradient_fkybt"]
+offsets = PackedFloat32Array(0, 0.64102566, 0.9770115)
+colors = PackedColorArray(0.9230457, 0.63632643, 0, 1, 0.92253137, 0.24639675, 0.15754247, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_x3wgy"]
+gradient = SubResource("Gradient_fkybt")
+
+[sub_resource type="Curve" id="Curve_fkybt"]
+_data = [Vector2(0, 0.9688716), 0.0, 0.0, 0, 0, Vector2(0.34210527, 0.7354086), 0.52185845, 0.52185845, 0, 0, Vector2(0.6684211, 0.688716), 0.0, 0.0, 0, 0, Vector2(1, 0.47081715), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="CurveTexture" id="CurveTexture_x3wgy"]
+curve = SubResource("Curve_fkybt")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_3smsa"]
+particle_flag_disable_z = true
+emission_shape_offset = Vector3(0, -40, 0)
+gravity = Vector3(0, -98, 0)
+scale_min = 0.0
+scale_max = 65.22
+scale_curve = SubResource("CurveTexture_x3wgy")
+color_ramp = SubResource("GradientTexture1D_x3wgy")
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_hqtel"]
+size = Vector2(64, 64)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_hqtel"]
+radius = 55.0
+
+[node name="Player" type="CharacterBody2D" groups=["player"]]
+script = ExtResource("1_onrkg")
+bullet_scene = ExtResource("2_hqtel")
+railgun_scene = ExtResource("3_fkybt")
+wall_jump_push = 1500.0
+recoil_force = 2500.0
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("2_i3pqv")
+
+[node name="SparkFire" type="GPUParticles2D" parent="Sprite2D"]
+material = SubResource("CanvasItemMaterial_fkybt")
+scale = Vector2(2, 2)
+amount = 55
+process_material = SubResource("ParticleProcessMaterial_3smsa")
+
+[node name="SkewContainer" type="Node2D" parent="Sprite2D"]
+position = Vector2(0, -150)
+
+[node name="AmmoLabel" type="Label" parent="Sprite2D/SkewContainer"]
+unique_name_in_owner = true
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -40.5
+offset_top = -11.5
+offset_right = 40.5
+offset_bottom = 11.5
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_hqtel")
+
+[node name="ParryBox" type="Area2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ParryBox"]
+shape = SubResource("CircleShape2D_hqtel")
+
+[node name="ParryTimer" type="Timer" parent="."]
+one_shot = true
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Camera2D" type="Camera2D" parent="."]
+script = ExtResource("4_hqtel")
+
+[node name="ParryCooldownTimer" type="Timer" parent="."]
+wait_time = 1.5
+one_shot = true
+
+[node name="GunRay" type="RayCast2D" parent="."]
+target_position = Vector2(300, 0)
+
+[node name="DashTimer" type="Timer" parent="."]
+wait_time = 0.2
+one_shot = true
+
+[connection signal="area_entered" from="ParryBox" to="." method="_on_parry_box_area_entered"]
+[connection signal="timeout" from="ParryTimer" to="." method="_on_parry_timer_timeout"]
+[connection signal="timeout" from="ParryCooldownTimer" to="." method="_on_parry_cooldown_timer_timeout"]
+[connection signal="timeout" from="DashTimer" to="." method="_on_dash_timer_timeout"]
