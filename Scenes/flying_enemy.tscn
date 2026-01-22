@@ -1,0 +1,22 @@
+[gd_scene load_steps=4 format=3 uid="uid://cafj7hxlulfef"]
+
+[ext_resource type="Script" uid="uid://djk38k5hrdfss" path="res://Scripts/flying_enemy.gd" id="1_a0nct"]
+[ext_resource type="Texture2D" uid="uid://b36jrcya87ivr" path="res://icon.svg" id="2_gcrhg"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_tvc0l"]
+radius = 43.55
+
+[node name="FlyingEnemy" type="CharacterBody2D" groups=["enemy_attack"]]
+script = ExtResource("1_a0nct")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+modulate = Color(0.4117647, 1, 0.6039216, 1)
+scale = Vector2(0.7, 0.7)
+texture = ExtResource("2_gcrhg")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_tvc0l")
+
+[node name="ShootTimer" type="Timer" parent="."]
+wait_time = 2.0
+autostart = true

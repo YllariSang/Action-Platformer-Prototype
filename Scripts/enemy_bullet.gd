@@ -8,6 +8,7 @@ var direction = Vector2.RIGHT
 var is_reflected = false 
 
 func _ready():
+	add_to_group("enemy")
 	await get_tree().create_timer(5.0).timeout
 	queue_free()
 

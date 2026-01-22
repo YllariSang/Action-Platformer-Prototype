@@ -7,6 +7,7 @@ extends Node2D
 var popup_scene = preload("res://Scenes//popup.tscn")
 
 func _ready():
+	add_to_group("enemy")
 	attack_timer.timeout.connect(_on_attack_timer_timeout)
 	attack_area.monitoring = false
 	attack_area.monitorable = false

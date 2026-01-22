@@ -336,10 +336,10 @@ func update_ui():
 					spark_fire.restart() 
 					spawn_popup("MAX CHARGE!", Color(0, 1, 1))
 					get_tree().call_group("camera", "add_shake", 0.2)
-				else:
-						was_max_ammo = false
-						grad.set_color(0, Color(0.9, 0.6, 0.0))
-						grad.set_color(1, Color(0.9, 0.2, 0.1))
+			else:
+				was_max_ammo = false
+				grad.set_color(0, Color(0.9, 0.6, 0.0))
+				grad.set_color(1, Color(0.9, 0.2, 0.1))
 
 func frame_freeze(time_scale, duration):
 	Engine.time_scale = time_scale
