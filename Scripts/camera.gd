@@ -28,7 +28,7 @@ func _ready():
 
 func _process(delta):
 	# 1. FOLLOW TARGET (Smooth Pan)
-	if target_node:
+	if is_instance_valid(target_node):
 		global_position = global_position.lerp(target_node.global_position, follow_speed * delta)
 	
 	# 2. SHAKE LOGIC

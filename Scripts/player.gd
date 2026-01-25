@@ -238,7 +238,6 @@ func try_to_parry():
 	cooldown_timer.start(parry_duration + parry_cooldown)
 
 func _on_parry_box_area_entered(area: Area2D) -> void:
-	# --- 1. REMOVED PREMATURE CODE FROM HERE ---
 	# The ammo increase and ui update that was here caused the double counting.
 	
 	if current_state == State.PARRY:
@@ -250,6 +249,12 @@ func _on_parry_box_area_entered(area: Area2D) -> void:
 		cooldown_timer.start(parry_success_cooldown)
 		spawn_popup("PARRIED!", Color(0, 1, 1))
 		get_tree().call_group("camera", "add_shake", 0.5)
+		parry_box.set_deferred("monitoring", false)
+		set_collision_layer_value(1, false)
+		await get_tree().create_timer(0.5).timeout
+		set_collision_layer_value(1, true)
+		
+		current_state = State.IDLE
 		
 		# Check if we were full BEFORE adding ammo (for reflection logic)
 		var is_full_spark = (current_ammo == max_ammo)

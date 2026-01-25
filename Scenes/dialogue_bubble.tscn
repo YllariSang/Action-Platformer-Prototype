@@ -1,0 +1,50 @@
+[gd_scene load_steps=3 format=3 uid="uid://diqkeglblx2wv"]
+
+[ext_resource type="Script" uid="uid://3l33e266ij5o" path="res://Scripts/dialogue_bubble.gd" id="1_e4rbf"]
+[ext_resource type="Texture2D" uid="uid://b7da6aqti486r" path="res://jagged_bubble.svg" id="2_thsaj"]
+
+[node name="DialogueBubble" type="Control"]
+layout_mode = 3
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 0
+script = ExtResource("1_e4rbf")
+
+[node name="BubbleBackground" type="NinePatchRect" parent="."]
+layout_mode = 0
+offset_top = -131.0
+offset_right = 84.0
+offset_bottom = -47.0
+texture = ExtResource("2_thsaj")
+patch_margin_left = 42
+patch_margin_top = 42
+patch_margin_right = 42
+patch_margin_bottom = 42
+axis_stretch_horizontal = 1
+axis_stretch_vertical = 1
+
+[node name="RichTextLabel" type="RichTextLabel" parent="BubbleBackground"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+bbcode_enabled = true
+
+[node name="NextIndicator" type="TextureRect" parent="BubbleBackground"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="NameContainer" type="Control" parent="."]
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+rotation = -0.08726646
+
+[node name="NameLabel" type="Label" parent="NameContainer"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0

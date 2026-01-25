@@ -85,21 +85,12 @@ func start_dash_attack():
 
 # --- PARRY LOGIC ---
 func get_parried(is_full_spark):
-	
-	await get_tree().create_timer(2.0).timeout
-	if not is_instance_valid(self): return
-	
 	print("Enemy Parried!")
 	hitbox.set_deferred("monitoring", false)
 	current_state = State.STUNNED
-	
-	# Visual Stun Effect
-	sprite.modulate = Color(0, 0, 1) # Turn Blue
-	velocity.x = -sign(velocity.x) * 300 # Knockback
-	
-	# Stun duration
+	sprite.modulate = Color(0, 0, 1)
 	await get_tree().create_timer(2.0).timeout
-	sprite.modulate = Color(1, 0, 0.1) # Reset Color
+	sprite.modulate = Color(1, 0, 0.1)
 	current_state = State.CHASE
 
 func _on_hitbox_entered(body):

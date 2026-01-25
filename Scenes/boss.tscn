@@ -25,6 +25,7 @@ height = 20
 
 [node name="Boss" type="CharacterBody2D"]
 script = ExtResource("1_skx2t")
+max_hp = 1000
 bullet_scene = ExtResource("2_lnbgr")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]

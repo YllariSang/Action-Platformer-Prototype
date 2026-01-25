@@ -15,6 +15,10 @@ run/main_scene="uid://faj0okc50kl4"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"
 
+[autoload]
+
+DialogueManager="*res://Scripts/dialogue_manager.gd"
+
 [global_group]
 
 enemy_attack=""

@@ -1,0 +1,13 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <path d="
+    M 10 10 
+    L 40 5 L 64 12 L 88 5 
+    L 118 10 
+    L 123 40 L 116 64 L 123 88 
+    L 118 118 
+    L 88 123 L 64 116 L 40 123 
+    L 10 118 
+    L 5 88 L 12 64 L 5 40 
+    Z" 
+    fill="white" stroke="black" stroke-width="6" stroke-linejoin="miter" stroke-miterlimit="4"/>
+</svg>
