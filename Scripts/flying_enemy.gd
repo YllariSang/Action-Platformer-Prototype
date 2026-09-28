@@ -13,6 +13,7 @@ var can_shoot = true
 func _ready():
 	add_to_group("enemy")
 	player_ref = get_tree().get_first_node_in_group("player")
+	SpriteFeedback.attach($Sprite2D)
 
 func _physics_process(delta):
 	if player_ref:
@@ -73,11 +74,8 @@ func take_damage(amount):
 		popup.setup(str(amount), Color(1, 0.8, 0)) # Yellow numbers
 	
 	# 2. Visual Flash
-	if $Sprite2D:
-		$Sprite2D.modulate = Color(10, 10, 10)
-		var tween = create_tween()
-		# Return to Normal Green Color
-		tween.tween_property($Sprite2D, "modulate", Color(0.4, 1, 0.6), 0.1)
+	# Flashes via the shader so the green tint is preserved underneath.
+	SpriteFeedback.flash($Sprite2D, Color.WHITE, 1.0, 0.1)
 	
 	if hp <= 0:
 		die()

@@ -9,7 +9,16 @@ var current_state = State.CHASE
 @export var gravity = 980.0
 
 @export var max_hp: int = 30 # Example value
+@export var windup_duration: float = 0.5
+@export var dash_duration: float = 0.3
+@export var stun_duration: float = 2.0
+@export var parry_knockback: float = 300.0
 var hp: int
+
+## Base tint. Kept as a named constant so a flash can be layered on top of it
+## without permanently overwriting the colour.
+const NORMAL_TINT := Color(1, 0, 0.1)
+const STUN_TINT := Color(0, 0, 1)
 
 var player_ref = null
 var popup_scene = preload("res://Scenes/popup.tscn")
@@ -22,6 +31,7 @@ func _ready():
 	
 	add_to_group("enemy")
 	player_ref = get_tree().get_first_node_in_group("player")
+	SpriteFeedback.attach(sprite)
 	
 	# Setup Hitbox (Make sure it knows who owns it for parrying)
 	hitbox.body_entered.connect(_on_hitbox_entered)
@@ -62,12 +72,11 @@ func _physics_process(delta):
 func start_dash_attack():
 	current_state = State.PREPARE
 	
-	# 1. Telegraph (Flash White)
-	var tween = create_tween()
-	tween.tween_property(sprite, "modulate", Color(10, 10, 10), 0.2)
-	tween.tween_property(sprite, "modulate", Color(1, 0, 0), 0.2)
+	# 1. Telegraph (flash white, then settle back to the red tint)
+	SpriteFeedback.flash(sprite, Color.WHITE, 0.9, 0.25)
+	SpriteFeedback.set_tint(sprite, NORMAL_TINT)
 	
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(windup_duration).timeout
 	if current_state != State.PREPARE: return # Stopped if died/stunned
 	
 	# 2. Dash!
@@ -76,7 +85,7 @@ func start_dash_attack():
 	velocity.x = dir * dash_speed
 	hitbox.monitoring = true # Enable Hitbox
 	
-	await get_tree().create_timer(0.3).timeout
+	await get_tree().create_timer(dash_duration).timeout
 	
 	# 3. Recovery
 	hitbox.monitoring = false
@@ -84,22 +93,29 @@ func start_dash_attack():
 		current_state = State.CHASE
 
 # --- PARRY LOGIC ---
-func get_parried(is_full_spark):
-	
-	await get_tree().create_timer(2.0).timeout
-	if not is_instance_valid(self): return
+# The stun must land IMMEDIATELY. Reacting two seconds late lets the enemy keep
+# chasing and land its dash, which reads as "the parry did nothing". The dash
+# coroutine above already bails out safely because it re-checks current_state
+# after every await.
+func get_parried(_is_full_spark = false):
+	if current_state == State.STUNNED: return
 	
 	print("Enemy Parried!")
 	hitbox.set_deferred("monitoring", false)
 	current_state = State.STUNNED
 	
 	# Visual Stun Effect
-	sprite.modulate = Color(0, 0, 1) # Turn Blue
-	velocity.x = -sign(velocity.x) * 300 # Knockback
+	SpriteFeedback.set_tint(sprite, STUN_TINT) # Turn Blue
+	# A short flash on top sells the impact without wiping the blue.
+	SpriteFeedback.flash(sprite, Color(1, 1, 1), 1.0, 0.15)
+	velocity.x = -sign(velocity.x) * parry_knockback # Knockback
 	
 	# Stun duration
-	await get_tree().create_timer(2.0).timeout
-	sprite.modulate = Color(1, 0, 0.1) # Reset Color
+	await get_tree().create_timer(stun_duration).timeout
+	if not is_instance_valid(self): return # Killed while stunned
+	
+	SpriteFeedback.clear(sprite)
+	SpriteFeedback.set_tint(sprite, NORMAL_TINT) # Reset Color
 	current_state = State.CHASE
 
 func _on_hitbox_entered(body):
@@ -117,12 +133,10 @@ func take_damage(amount):
 		popup.setup(str(amount), Color(1, 0.5, 0)) # Orange numbers
 	
 	# 2. Visual Flash (Hit Feedback)
+	# The flash no longer clobbers the tint, so a stunned enemy stays blue while
+	# it flashes on impact.
 	if sprite:
-		# Flash White
-		sprite.modulate = Color(10, 10, 10)
-		var tween = create_tween()
-		# Return to Normal Red Color
-		tween.tween_property(sprite, "modulate", Color(1, 0, 0.1), 0.1)
+		SpriteFeedback.flash(sprite, Color.WHITE, 1.0, 0.1)
 	
 	# 3. Death Logic
 	if hp <= 0:
