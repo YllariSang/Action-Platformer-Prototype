@@ -8,9 +8,11 @@ func _ready():
 	if direction != Vector2.ZERO:
 		rotation = direction.angle()
 	
-	# Connect signals
-	body_entered.connect(_on_body_entered)
-	area_entered.connect(_on_area_entered)
+	# Connect signals (body_entered is already wired in bullet.tscn, so guard it)
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
+	if not area_entered.is_connected(_on_area_entered):
+		area_entered.connect(_on_area_entered)
 	
 	await get_tree().create_timer(2.0).timeout
 	queue_free()

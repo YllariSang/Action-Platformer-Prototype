@@ -10,6 +10,11 @@ func _ready():
 	rotation = direction.angle()
 	get_tree().call_group("camera", "add_shake", 0.3)
 	
+	# body_entered is already wired in railgun_bullet.tscn; area_entered is not,
+	# and the railgun needs it to reach Area2D targets (hurtboxes, hitboxes).
+	if not area_entered.is_connected(_on_area_entered):
+		area_entered.connect(_on_area_entered)
+	
 	await get_tree().create_timer(1.0).timeout
 	queue_free()
 
