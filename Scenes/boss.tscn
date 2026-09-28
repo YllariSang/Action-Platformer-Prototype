@@ -56,4 +56,3 @@ texture_under = SubResource("GradientTexture2D_ukjjc")
 texture_progress = SubResource("GradientTexture2D_n725y")
 
 [connection signal="timeout" from="StateTimer" to="." method="_on_state_timer_timeout"]
-[connection signal="changed" from="CanvasLayer/HealthBar" to="." method="_on_health_bar_changed"]

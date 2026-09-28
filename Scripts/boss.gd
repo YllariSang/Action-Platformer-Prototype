@@ -30,12 +30,16 @@ func _ready():
 	hp = max_hp
 	add_to_group("enemy") 
 	player_ref = get_tree().get_first_node_in_group("player")
-	state_timer.timeout.connect(_on_state_timer_timeout)
+	# The StateTimer timeout is already wired in boss.tscn, so guard the connect
+	# to avoid "Signal 'timeout' is already connected" every time the boss spawns.
+	if not state_timer.timeout.is_connected(_on_state_timer_timeout):
+		state_timer.timeout.connect(_on_state_timer_timeout)
 	
 	health_bar.max_value = max_hp
 	health_bar.value = hp
 	health_bar.visible = false 
 	
+	SpriteFeedback.attach(sprite)
 	change_state(State.INACTIVE) 
 
 func start_fight():
@@ -149,10 +153,11 @@ func take_damage(amount):
 	if hp <= (max_hp / 2) and not is_phase_two:
 		start_phase_two()
 	
-	if sprite.modulate.a > 0.5 and not is_phase_two:
-		sprite.modulate = Color(10, 10, 10) 
-		var tween = create_tween()
-		tween.tween_property(sprite, "modulate", get_state_color(), 0.1)
+	# Only skip the flash while the boss is faded out mid-teleport.
+	# The flash rides on the shader, so the per-state tint underneath is left
+	# intact and a spiral shot no longer repaints the boss.
+	if sprite.modulate.a > 0.5:
+		SpriteFeedback.flash(sprite, Color.WHITE, 1.0, 0.1)
 	
 	if popup_scene:
 		var popup = popup_scene.instantiate()
@@ -202,7 +207,9 @@ func die():
 	get_tree().call_group("camera", "change_target", self)
 	
 	# 2. Slow Motion Explosions
-	Engine.time_scale = 0.5
+	# Held through TimeControl so a parry hit-stop during the cinematic cannot
+	# snap the game back to full speed.
+	var slowmo = TimeControl.hold(0.5)
 	
 	for i in range(15):
 		var rand_offset = Vector2(randf_range(-60, 60), randf_range(-60, 60))
@@ -211,7 +218,7 @@ func die():
 		await get_tree().create_timer(0.15).timeout
 	
 	# 3. Restore Speed & Big Bang
-	Engine.time_scale = 1.0
+	TimeControl.release(slowmo)
 	
 	spawn_explosion(global_position)
 	spawn_explosion(global_position + Vector2(20, -20))
@@ -220,10 +227,10 @@ func die():
 	
 	await get_tree().create_timer(1.0).timeout
 	
-	# 4. Show Win Screen
-	var win_screen = get_tree().get_first_node_in_group("win_screen")
-	if win_screen:
-		win_screen.show_win()
+	# 4. Show the result screen
+	var result_screen = get_tree().get_first_node_in_group("result_screen")
+	if result_screen and result_screen.has_method("show_result"):
+		result_screen.show_result(true)
 	
 	# --- THE FIX ---
 	# Tell camera to look at player again BEFORE we delete the boss!
@@ -237,7 +244,3 @@ func spawn_explosion(pos):
 		var ex = explosion_scene.instantiate()
 		get_parent().add_child(ex)
 		ex.global_position = pos
-		
-
-func _on_health_bar_changed():
-	pass
