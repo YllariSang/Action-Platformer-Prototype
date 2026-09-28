@@ -19,6 +19,9 @@ extends CharacterBody2D
 @export var wall_jump_push: float = 500.0
 @export var wall_slide_speed: float = 100.0
 @export var recoil_force: float = 900.0 
+@export var recoil_duration: float = 0.2
+@export var shot_recoil_mult: float = 0.2
+@export var railgun_recoil_mult: float = 0.5
 @export var coyote_time: float = 0.15 
 
 # --- STATE MACHINE ---
@@ -35,6 +38,17 @@ var coyote_timer: float = 0.0
 var charge_timer: float = 0.0
 var is_charging: bool = false
 var railgun_cost: int = 3
+
+# Recoil is kept OUT of `velocity` because handle_movement_and_jumps() reassigns
+# velocity.x from input every frame. Writing the push into velocity meant it was
+# either clobbered (the old bug) or re-added every frame, which integrates into a
+# runaway impulse. Instead the horizontal push rides alongside the input-derived
+# velocity and decays to zero; the vertical push is a one-shot that gravity
+# already bleeds off.
+var recoil_x: float = 0.0
+var recoil_x_start: float = 0.0
+var recoil_time_left: float = 0.0
+var recoil_applied_x: float = 0.0 # what was added to velocity.x last frame
 
 # --- NODES ---
 @onready var parry_box: Area2D = $ParryBox
@@ -71,6 +85,11 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if current_state == State.STUNNED: return
 	
+	# Strip the horizontal push applied last frame. Without this it would be
+	# read back as part of velocity.x by move_toward() and compound every frame.
+	velocity.x -= recoil_applied_x
+	recoil_applied_x = 0.0
+	
 	#COYOTE TIME & GRAVITY
 	if is_on_floor():
 		coyote_timer = coyote_time
@@ -85,9 +104,18 @@ func _physics_process(delta: float) -> void:
 			else:
 				velocity.y += gravity * delta
 
+	#RECOIL DECAY (must run before movement, which reads recoil_x)
+	apply_recoil(delta)
+	
 	#MOVEMENT
 	if current_state != State.DASH and current_state != State.PARRY:
 		handle_movement_and_jumps()
+	
+	# Apply the push on top of whatever movement just decided, and remember it
+	# so next frame can take it back off again. This works whether or not the
+	# player is holding a direction.
+	velocity.x += recoil_x
+	recoil_applied_x = recoil_x
 	
 	move_and_slide()
 	
@@ -141,7 +169,10 @@ func handle_movement_and_jumps():
 # --- CHARGE & ATTACK LOGIC ---
 func handle_attack_input(delta):
 	if current_state == State.PARRY or current_state == State.DASH or current_state == State.RECOVERY:
+		# Losing the state has to drop the charge, otherwise releasing the mouse
+		# after a dash fires a railgun that was never charged up.
 		is_charging = false
+		charge_timer = 0.0
 		return
 
 	if Input.is_action_pressed("attack"):
@@ -164,7 +195,7 @@ func handle_attack_input(delta):
 
 func fire_normal_shot():
 	if current_ammo > 0:
-		spawn_bullet(bullet_scene, 1, 0.2)
+		spawn_bullet(bullet_scene, 1, shot_recoil_mult)
 		current_ammo -= 1
 		update_ui()
 	else:
@@ -172,7 +203,7 @@ func fire_normal_shot():
 
 func fire_railgun():
 	if current_ammo >= railgun_cost:
-		spawn_bullet(railgun_scene, 2.0, 0.5) 
+		spawn_bullet(railgun_scene, 2.0, railgun_recoil_mult) 
 		current_ammo -= railgun_cost
 		update_ui()
 		spawn_popup("RAILGUN!", Color(0, 1, 1))
@@ -194,7 +225,10 @@ func spawn_bullet(scene_to_spawn, shake_amount, recoil_mult):
 	b.direction = dir_vec
 	
 	# Recoil Logic
-	velocity -= dir_vec * recoil_force * recoil_mult
+	# add_recoil() owns the push instead of writing to velocity directly:
+	# handle_movement_and_jumps() reassigns velocity.x from input every frame,
+	# so a value stored there would be clobbered before it moved anything.
+	add_recoil(-dir_vec * recoil_force * recoil_mult)
 	get_tree().call_group("camera", "add_shake", shake_amount)
 
 	# Recovery Delay
@@ -203,6 +237,35 @@ func spawn_bullet(scene_to_spawn, shake_amount, recoil_mult):
 		current_state = State.IDLE
 
 # --- DASH & PARRY LOGIC ---
+
+func apply_recoil(delta: float) -> void:
+	if recoil_time_left <= 0.0:
+		recoil_x = 0.0
+		return
+	
+	recoil_time_left -= delta
+	if recoil_time_left <= 0.0:
+		clear_recoil()
+		return
+	
+	# Fade the push out linearly so it lands exactly on zero at the end.
+	var t = clampf(recoil_time_left / recoil_duration, 0.0, 1.0)
+	recoil_x = recoil_x_start * t
+
+func add_recoil(impulse: Vector2) -> void:
+	# Vertical is a one-shot: added once and bled off by gravity, so it cannot
+	# compound the way a per-frame add would.
+	velocity.y += impulse.y
+	
+	# Horizontal rides alongside the input velocity until it decays to zero.
+	recoil_x_start = impulse.x
+	recoil_x = impulse.x
+	recoil_time_left = recoil_duration
+
+func clear_recoil() -> void:
+	recoil_x = 0.0
+	recoil_x_start = 0.0
+	recoil_time_left = 0.0
 
 func try_to_dash():
 	if not can_dash or current_state == State.PARRY or current_state == State.RECOVERY: return

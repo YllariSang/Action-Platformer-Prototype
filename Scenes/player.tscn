@@ -43,7 +43,7 @@ script = ExtResource("1_onrkg")
 bullet_scene = ExtResource("2_hqtel")
 railgun_scene = ExtResource("3_fkybt")
 wall_jump_push = 1500.0
-recoil_force = 2500.0
+recoil_force = 900.0
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 scale = Vector2(0.5, 0.5)
