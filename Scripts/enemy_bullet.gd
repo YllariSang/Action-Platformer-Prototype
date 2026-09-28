@@ -41,13 +41,17 @@ func _on_body_entered(body):
 
 # Handle hitting the Dummy
 func _on_area_entered(area):
-	if is_reflected:
-		if area.has_method("take_damage"):
-			area.take_damage(5) 
-			queue_free()
-		elif area.get_parent().has_method("take_damage"):
-			area.get_parent().take_damage(5)
-			queue_free()
+	if not is_reflected: return # The player's parry box handles the un-reflected case
+	
+	if area.has_method("take_damage"):
+		area.take_damage(5) 
+		queue_free()
+		return
+	
+	var parent = area.get_parent()
+	if parent and parent.has_method("take_damage"):
+		parent.take_damage(5)
+		queue_free()
 
 # --- REFLECTION LOGIC ---
 func get_parried(should_reflect = false):
