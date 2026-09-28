@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3 uid="uid://c4lot0lmo8fdt"]
+[gd_scene load_steps=17 format=3 uid="uid://c4lot0lmo8fdt"]
 
 [ext_resource type="Script" uid="uid://cxpdc72uahs6q" path="res://Scripts/player.gd" id="1_onrkg"]
 [ext_resource type="PackedScene" uid="uid://ipabj7iof7sc" path="res://Scenes/bullet.tscn" id="2_hqtel"]
@@ -32,6 +32,25 @@ scale_max = 65.22
 scale_curve = SubResource("CurveTexture_x3wgy")
 color_ramp = SubResource("GradientTexture1D_x3wgy")
 
+[sub_resource type="Gradient" id="Gradient_heal"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(1, 1, 1, 1, 0.35, 1, 0.45, 0.9)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_heal"]
+gradient = SubResource("Gradient_heal")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_heal"]
+particle_flag_disable_z = true
+emission_shape = 1
+emission_sphere_radius = 40.0
+spread = 180.0
+gravity = Vector3(0, -500, 0)
+scale_min = 3.0
+scale_max = 8.0
+initial_velocity_min = 120.0
+initial_velocity_max = 260.0
+color_ramp = SubResource("GradientTexture1D_heal")
+
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hqtel"]
 size = Vector2(64, 64)
 
@@ -55,22 +74,13 @@ scale = Vector2(2, 2)
 amount = 55
 process_material = SubResource("ParticleProcessMaterial_3smsa")
 
-[node name="SkewContainer" type="Node2D" parent="Sprite2D"]
-position = Vector2(0, -150)
-
-[node name="AmmoLabel" type="Label" parent="Sprite2D/SkewContainer"]
-unique_name_in_owner = true
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -40.5
-offset_top = -11.5
-offset_right = 40.5
-offset_bottom = 11.5
-grow_horizontal = 2
-grow_vertical = 2
+[node name="HealFire" type="GPUParticles2D" parent="Sprite2D"]
+scale = Vector2(2, 2)
+amount = 40
+emitting = false
+one_shot = true
+explosiveness = 0.95
+process_material = SubResource("ParticleProcessMaterial_heal")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_hqtel")
@@ -84,6 +94,77 @@ shape = SubResource("CircleShape2D_hqtel")
 one_shot = true
 
 [node name="UI" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="HudRoot" type="Control" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+unique_name_in_owner = true
+
+[node name="LeftColumn" type="VBoxContainer" parent="UI/HudRoot"]
+layout_mode = 1
+anchors_preset = 0
+offset_left = 28.0
+offset_top = 24.0
+offset_right = 320.0
+offset_bottom = 100.0
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="HealthRow" type="HBoxContainer" parent="UI/HudRoot/LeftColumn"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="SparkBlock" type="HBoxContainer" parent="UI/HudRoot/LeftColumn"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="SparkLabel" type="Label" parent="UI/HudRoot/LeftColumn/SparkBlock"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(112, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 20
+text = "SPARK 0/6"
+vertical_alignment = 1
+
+[node name="SparkRow" type="HBoxContainer" parent="UI/HudRoot/LeftColumn/SparkBlock"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 5
+
+[node name="HealHint" type="Label" parent="UI/HudRoot"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -260.0
+offset_top = 24.0
+offset_right = -28.0
+offset_bottom = 54.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.5, 0.5, 0.55, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 20
+text = "[Q] HEAL 2"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="Camera2D" type="Camera2D" parent="."]
 script = ExtResource("4_hqtel")

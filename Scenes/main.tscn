@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=4 uid="uid://faj0okc50kl4"]
+[gd_scene load_steps=13 format=4 uid="uid://faj0okc50kl4"]
 
 [ext_resource type="PackedScene" uid="uid://c4lot0lmo8fdt" path="res://Scenes/player.tscn" id="1_0xm2m"]
 [ext_resource type="Texture2D" uid="uid://b36jrcya87ivr" path="res://icon.svg" id="2_h2yge"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" uid="uid://dc2nm3ravxybl" path="res://Scripts/boss_trigger.gd" id="5_lquwl"]
 [ext_resource type="PackedScene" uid="uid://cafj7hxlulfef" path="res://Scenes/flying_enemy.tscn" id="6_6bp64"]
 [ext_resource type="PackedScene" uid="uid://drot3t2abc2wm" path="res://Scenes/melee_enemy.tscn" id="7_344ge"]
+[ext_resource type="PackedScene" path="res://Scenes/result_screen.tscn" id="8_result"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_1bvp3"]
 texture = ExtResource("2_h2yge")
@@ -127,3 +128,5 @@ position = Vector2(-1107, -83)
 
 [node name="MeleeEnemy" parent="." instance=ExtResource("7_344ge")]
 position = Vector2(-783, -39)
+
+[node name="ResultScreen" parent="." instance=ExtResource("8_result")]
