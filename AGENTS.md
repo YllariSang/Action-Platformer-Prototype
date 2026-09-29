@@ -161,7 +161,7 @@ is added, keep it minimal and treat any new sound as a placeholder.
   blocks parry, dash, and shooting. It was previously an instant 1 HP for
   `heal_cost` Sparks with no state guard at all, which was the same price as a
   successful parry with no timing to get right — the parry became optional.
-  Four rules keep it honest, and all four are load-bearing:
+  Five rules keep it honest, and all five are load-bearing:
   - Sparks are charged in `_finish_heal()`, not on press, so a cancelled
     channel costs only time and exposure. There is no refund path to get wrong.
   - `cancel_heal()` sets `_heal_locked`, and the poll in `_physics_process`
@@ -175,6 +175,23 @@ is added, keep it minimal and treat any new sound as a placeholder.
     `get_physics_process_delta_time()`. The coroutine resumes from the
     `physics_frame` signal rather than from `_physics_process`, and the delta is
     not readable in that context, so it returns 0 and the channel never finishes.
+  - **Only a *fresh* direction press cancels, and only from the channel's second
+    frame on.** The loop tests `Input.is_action_just_pressed("left"/"right")`,
+    not the held axis, and a `can_steer` flag stays false until after the first
+    `await`. `HEALING` already roots the player, so a direction the player was
+    holding when they pressed `Q` is simply overridden. This was
+    `Input.get_axis("left", "right") != 0.0`, which meant the one moment a heal
+    is most tempting — mid-run, in the open — was the one moment it could not
+    start; the channel began and cancelled on its own first frame, so `Q` did
+    nothing at all while walking. The grace frame is what keeps pressing a
+    direction and `Q` on the same tick from cancelling a channel born that tick.
+- **A refusal to heal latches `_heal_locked` too.** The "HP FULL" and
+  "NEED n SPARKS!" early returns in `try_to_heal()` set the latch, for the same
+  reason `cancel_heal()` does: the function is polled from `_physics_process`
+  every frame the key is down, so an unlatched `return` re-entered on the next
+  frame and stacked a popup per physics tick — 45 identical "HP FULL" popups
+  over three quarters of a second, measured. The prompt is a reason, not a
+  per-frame readout; the key has to be released to ask again.
 - **A hold repeats a completed heal.** Finishing a channel does not set
   `_heal_locked`, so keeping `Q` down starts the next one. That is intentional —
   the 0.6s commitment is the cost, not the first press — but it means the HUD

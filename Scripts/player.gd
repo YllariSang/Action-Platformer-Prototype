@@ -66,13 +66,17 @@ var is_dead: bool = false
 ## is how a hit landing mid-channel stops the heal without the damage code
 ## having to know that healing is a channel at all.
 var _heal_token: int = 0
-## Set whenever a channel ends early, cleared only when the heal key is let go.
+## Set whenever a channel ends early OR the channel is refused outright (HP full,
+## not enough Sparks), cleared only when the heal key is let go.
 ##
 ## Without this the channel is polled from _physics_process while the key is
 ## held, so the frame after any cancel it just started again: nudging the stick
 ## made the player jitter between standing still and walking, and a hit was
-## followed instantly by a fresh channel that the i-frames then made free. Now
-## ending a channel means the player has to commit again from a released key.
+## followed instantly by a fresh channel that the i-frames then made free. The
+## refusals need it for a different reason: they only print a popup and return,
+## so a held key re-ran them at the physics rate and buried the player under
+## identical "HP FULL" text. Now ending or refusing a channel means the player
+## has to commit again from a released key.
 var _heal_locked: bool = false
 
 # Charging Variables
@@ -579,6 +583,12 @@ func die() -> void:
 ## but with no timing requirement, which quietly made the parry pointless. The
 ## channel costs time and mobility instead, occupies the key so a parry cannot
 ## ride along with it, and is interruptible, so committing to it is a decision.
+##
+## The commitment is the hold, not the stillness. Requiring the stick to be
+## already neutral before Q was accepted meant the one moment a heal is most
+## tempting -- mid-run, in the open -- was the one moment it could not start, so
+## the player had to stop, let go, and start again. HEALING roots the player by
+## itself, so a direction held at press time is simply overridden.
 func try_to_heal() -> void:
 	if is_dead or current_state == State.HEALING: return
 	# Refuse from every state the player has already committed to, so a heal can
@@ -586,12 +596,19 @@ func try_to_heal() -> void:
 	# on try_to_parry() for why movement is not one of those states.
 	if current_state != State.IDLE: return
 	
+	# Both refusals latch, for the same reason cancel_heal() does: this is
+	# polled from _physics_process every frame the key is down, so an unlatched
+	# return re-entered on the very next frame and stacked ~60 identical popups
+	# a second over the player. The latch means the reason is shown once per
+	# press, and the key has to be released and re-pressed to ask again.
 	if hp >= max_hp:
 		spawn_popup("HP FULL", Color(0.5, 1, 0.5))
+		_heal_locked = true
 		return
 	
 	if current_ammo < heal_cost:
 		spawn_popup("NEED %d SPARKS!" % heal_cost, Color(1, 0.7, 0.2))
+		_heal_locked = true
 		return
 	
 	_heal_token += 1
@@ -608,10 +625,18 @@ func try_to_heal() -> void:
 	label_heal.modulate = Color(0.4, 1, 0.5, 1)
 	
 	var elapsed := 0.0
+	# A direction the player was ALREADY holding when the channel started is
+	# deliberately ignored. HEALING roots the player on its own, so pressing Q
+	# mid-stride heals without needing a "let go of the stick first" step, which
+	# is what made starting one feel like it fought back. Only a FRESH press
+	# cancels, and only from the second frame on: without that grace frame,
+	# pressing a direction and Q on the same physics tick cancelled the channel
+	# on the tick it was born, which looked like the heal simply not working.
+	var can_steer := false
 	while Input.is_action_pressed("heal") and _heal_token == my_token:
 		# Steering away cancels. A heal that follows the player is not a
 		# commitment, it is just a slower normal shot.
-		if Input.get_axis("left", "right") != 0.0:
+		if can_steer and (Input.is_action_just_pressed("left") or Input.is_action_just_pressed("right")):
 			spawn_popup("CANCELLED", Color(0.6, 0.6, 0.6))
 			break
 		
@@ -630,6 +655,8 @@ func try_to_heal() -> void:
 			return
 		
 		await get_tree().physics_frame
+		# Past the channel's first frame, a fresh direction press cancels it.
+		can_steer = true
 	
 	# Fell out without completing: released the key, steered off, or something
 	# bumped the token (a hit landed).
