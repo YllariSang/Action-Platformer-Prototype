@@ -24,7 +24,12 @@ const NORMAL_TINT := Color(0.41, 1, 0.6)
 const IDLE_TINT := Color(0.37, 0.55, 0.45)
 
 var popup_scene = preload("res://Scenes/popup.tscn")
-var hp = max_hp
+## Assigned in _ready(), never here. A member initializer runs while the object
+## is being constructed, which is *before* the scene's own stored property
+## values are applied, so `var hp = max_hp` always resolved to the script's
+## default and silently discarded any per-instance max_hp set in the inspector.
+## Verified: a flier with max_hp = 99 still came up with hp = 20.
+var hp: int = 0
 var player_ref = null
 var can_shoot = true
 
@@ -38,6 +43,8 @@ var _applied_tint: Color = Color(-1, -1, -1, -1)
 @onready var sprite = $Sprite2D
 
 func _ready():
+	# See the note on `hp`: this has to happen here, not at declaration.
+	hp = max_hp
 	add_to_group("enemy")
 	player_ref = get_tree().get_first_node_in_group("player")
 	home_position = global_position

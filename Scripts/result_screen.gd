@@ -23,12 +23,25 @@ func _ready() -> void:
 	title.pivot_offset = title.size * 0.5
 	restart_button.pressed.connect(_on_restart_pressed)
 
+	# Opt out of the pause show_result() applies. A node left on the inherited
+	# PAUSABLE would stop receiving _unhandled_input and stop running its fade
+	# tween the instant the tree paused, which left the panel stuck half-faded
+	# with no reachable restart button. WHEN_PAUSED keeps this subtree live
+	# while the rest of the game stays frozen.
+	process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+
 
 func show_result(won: bool) -> void:
 	if is_shown: return
 	is_shown = true
 	has_won = won
 	visible = true
+
+	# Freeze the world behind the panel. Without this the result screen fades in
+	# over a live fight: enemies keep chasing, bullets keep flying, the camera
+	# keeps shaking, and a death is reported while the player's corpse is being
+	# shot. Paused after `visible` so the first frame of the fade is unaffected.
+	get_tree().paused = true
 
 	# Hide the in-game HUD so only the result numbers are on screen.
 	var player = get_tree().get_first_node_in_group("player")

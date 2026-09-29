@@ -35,7 +35,19 @@ extends CharacterBody2D
 @export var coyote_time: float = 0.15 
 
 # --- STATE MACHINE ---
-enum State { IDLE, RUN, ATTACK, PARRY, DASH, STUNNED, RECOVERY, HEALING, DEAD }
+# STUNNED used to sit in this enum behind a `_physics_process` early return that
+# nothing ever assigned, and RUN sat behind two `!= State.RUN` guards that
+# nothing ever set. Both were promises the code did not keep: the STUNNED branch
+# would have frozen the player permanently the day a stun feature was added,
+# and the RUN guards read as "parry and heal work while moving" while actually
+# meaning "only while standing still". Neither is written to disk or exported,
+# so dropping them from the enum renumbers the rest harmlessly.
+#
+# Movement is deliberately NOT a state. handle_movement_and_jumps() runs during
+# ATTACK, so a state written from it would clobber the shot recovery, and it is
+# skipped entirely during PARRY and DASH, so those states have to be the ones
+# that decide whether the player is free to act.
+enum State { IDLE, ATTACK, PARRY, DASH, RECOVERY, HEALING, DEAD }
 var current_state = State.IDLE
 var current_ammo: int = 0
 var facing_direction: int = 1
@@ -151,8 +163,6 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if current_state == State.STUNNED: return
-	
 	# A dead player keeps falling (so the body drops) but takes no input.
 	if is_dead:
 		tick_invuln_blink(delta)
@@ -403,7 +413,11 @@ func reset_player_tint() -> void:
 	SpriteFeedback.set_tint(sprite, Color(1, 1, 1))
 
 func try_to_parry():
-	if current_state != State.IDLE and current_state != State.RUN: return
+	# IDLE is the only uncommitted state: ATTACK is the shot recovery, PARRY
+	# and DASH are the parry itself, and RECOVERY and HEALING are commitments
+	# the player has already paid time for. Moving does not gate the parry —
+	# velocity is zeroed on the next line — which is why there is no RUN here.
+	if current_state != State.IDLE: return
 	if not can_parry: return 
 	
 	current_state = State.PARRY
@@ -568,8 +582,9 @@ func die() -> void:
 func try_to_heal() -> void:
 	if is_dead or current_state == State.HEALING: return
 	# Refuse from every state the player has already committed to, so a heal can
-	# never be folded into a dash, a parry, or the recovery penalty.
-	if current_state != State.IDLE and current_state != State.RUN: return
+	# never be folded into a dash, a parry, or the recovery penalty. See the note
+	# on try_to_parry() for why movement is not one of those states.
+	if current_state != State.IDLE: return
 	
 	if hp >= max_hp:
 		spawn_popup("HP FULL", Color(0.5, 1, 0.5))

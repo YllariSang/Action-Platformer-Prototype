@@ -120,10 +120,36 @@ is added, keep it minimal and treat any new sound as a placeholder.
 - **`result_screen`** is found via the `"result_screen"` group and has a
   `show_result(won: bool)` method. Both the boss (win) and the player (death)
   call it. It was formerly `win_screen` / `show_win()`; if you see that name in
-  older notes, it is stale.
+  older notes, it is stale. **`show_result()` pauses the tree**, so the result
+  panel does not fade in over a live fight (enemies chasing a corpse, bullets
+  in flight, camera shaking behind the dim). The screen therefore sets its own
+  `process_mode` to `PROCESS_MODE_WHEN_PAUSED` in `_ready()`: without that, the
+  node inherits `PAUSABLE`, stops receiving `_unhandled_input`, and stops
+  running its fade tween the instant the pause lands, leaving a half-transparent
+  panel with an unreachable restart button. `_on_restart_pressed()` already
+  unpauses and calls `TimeControl.reset()`.
 - **Player has 5 HP and no passive regeneration.** `heal_cost = 2` Sparks.
   Invulnerability window after a hit, dash i-frames, and double damage during
   parry recovery are all intentional.
+- **The player has exactly one uncommitted state, and movement is not one of
+  them.** `try_to_parry()` and `try_to_heal()` accept only `State.IDLE`; every
+  other state is something the player has already paid time for (shot recovery,
+  the parry itself, recovery penalty, heal channel). Two states were removed
+  from the enum as dead code: `RUN`, which nothing ever assigned even though two
+  guards tested for it (so "parry while moving" silently meant "parry while
+  standing still" — it works anyway, because the parry zeroes velocity on the
+  next line), and `STUNNED`, whose `_physics_process` early return would have
+  frozen the player permanently the day a stun feature was added it. Do not
+  reintroduce a movement state: `handle_movement_and_jumps()` also runs during
+  `ATTACK`, so a state written from it would clobber the shot recovery, and it is
+  skipped entirely during `PARRY`/`DASH`, so those are the states that have to
+  decide whether the player may act.
+- **Assign an entity's HP in `_ready()`, never in a member initializer.**
+  `var hp = max_hp` runs while the object is being constructed, which is
+  *before* the scene's stored property values are applied, so it always
+  resolved to the script's default and silently discarded any per-instance
+  `max_hp` set in the inspector. `flying_enemy.gd` did exactly this and a flier
+  with `max_hp = 99` came up with 20 HP.
 - **Damage is measured in hearts, not in arbitrary numbers.** `take_damage()`
   does `hp = max(hp - amount, 0)` and does not clamp to a single heart, so an
   enemy `damage` above `max_hp` is an instant kill at any health. `melee_enemy`
