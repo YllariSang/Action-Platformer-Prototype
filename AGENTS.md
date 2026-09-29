@@ -121,9 +121,66 @@ is added, keep it minimal and treat any new sound as a placeholder.
   `show_result(won: bool)` method. Both the boss (win) and the player (death)
   call it. It was formerly `win_screen` / `show_win()`; if you see that name in
   older notes, it is stale.
-- **Player has 3 HP and no passive regeneration.** `heal_cost = 2` Sparks.
+- **Player has 5 HP and no passive regeneration.** `heal_cost = 2` Sparks.
   Invulnerability window after a hit, dash i-frames, and double damage during
   parry recovery are all intentional.
+- **Damage is measured in hearts, not in arbitrary numbers.** `take_damage()`
+  does `hp = max(hp - amount, 0)` and does not clamp to a single heart, so an
+  enemy `damage` above `max_hp` is an instant kill at any health. `melee_enemy`
+  was 10 and killed the player outright at both 3 HP and 5 HP; it is now 2,
+  matching `enemy_bullet.gd`'s 1. Any new damage source must be added in the
+  same unit, or the healing and double-damage rules stop making sense.
+- **Healing is a channel, not a tap, and that is load-bearing.** `try_to_heal()`
+  starts a `State.HEALING` channel that roots the player for `heal_duration` and
+  blocks parry, dash, and shooting. It was previously an instant 1 HP for
+  `heal_cost` Sparks with no state guard at all, which was the same price as a
+  successful parry with no timing to get right — the parry became optional.
+  Four rules keep it honest, and all four are load-bearing:
+  - Sparks are charged in `_finish_heal()`, not on press, so a cancelled
+    channel costs only time and exposure. There is no refund path to get wrong.
+  - `cancel_heal()` sets `_heal_locked`, and the poll in `_physics_process`
+    refuses to start while it is set. Without the latch the poll restarts the
+    channel the very next frame, so a cancel was a no-op: nudging the stick
+    made the player jitter, and a hit was followed instantly by a fresh channel
+    that the granted i-frames made free. The key must be released first.
+  - `take_damage()` calls `cancel_heal()`. Being hit interrupts a heal, so
+    healing is something you find an opening for.
+  - The channel steps with `1.0 / Engine.physics_ticks_per_second`, **not**
+    `get_physics_process_delta_time()`. The coroutine resumes from the
+    `physics_frame` signal rather than from `_physics_process`, and the delta is
+    not readable in that context, so it returns 0 and the channel never finishes.
+- **A hold repeats a completed heal.** Finishing a channel does not set
+  `_heal_locked`, so keeping `Q` down starts the next one. That is intentional —
+  the 0.6s commitment is the cost, not the first press — but it means the HUD
+  hint and the `heal_fire` progress fill are re-armed immediately on success.
+- **`railgun_bullet.gd` pierces through `pierce_count` targets, and the dedup is
+  on the resolved victim, not the collider.** An enemy usually has a body *and* a
+  child hurtbox overlapping (the melee enemy's `Hitbox` is exactly that), and
+  both paths resolve to the same enemy. Keying `_hit_targets` on the collider
+  instead of the victim let one enemy eat two pierces, so the budget lied. Walls
+  still stop the shot, unlike enemies.
+- **An open parry is a hard immunity, and the gate is `player.is_parrying()`.**
+  `take_damage()` refuses damage whenever it returns true, and the two damage
+  sources (`melee_enemy.gd`'s hitbox, `enemy_bullet.gd`'s `_on_body_entered`)
+  bail out early too. Do not reduce that to `current_state == State.PARRY`
+  alone: a successful parry drops the box with `set_deferred()` and moves to
+  `IDLE` immediately, so an already-overlapping hitbox reports its body entry
+  later in that same frame and used to land the hit *after* the player had
+  parried it. Polling `parry_box.monitoring` as well keeps the parry
+  authoritative for the frame it resolves in.
+- **`enemy_bullet.gd` must not `queue_free()` itself on a parrying player.** It
+  returns instead, so the bullet stays alive and the directional parry box can
+  still reflect it a frame later. Consuming it there ate the reflect.
+- **Regular enemies are leashed by `aggro_range`; the boss is not.** Past the
+  leash they stop chasing, stop shooting, drop the hitbox, tint out to
+  `IDLE_TINT`, and walk home. A telegraphed dash (`PREPARE`) *is* cancelled by
+  breaking the leash; a committed dash (`DASH`) is not, or retreating from an
+  attack in flight would be a free escape. Every tint write in
+  `melee_enemy.gd` and `flying_enemy.gd` goes through `_apply_tint()` — writing
+  `sprite.modulate` directly desyncs the cached `_applied_tint` and leaves the
+  enemy stuck in the wrong colour. Walking home scales speed with the remaining
+  distance: at a fixed walk speed the enemy overshoots its arrival radius,
+  reverses, and jitters on the spot forever.
 - **The HUD is screen-space, not on the player.** It lives under
   `Player/UI` (a `CanvasLayer`) as `UI/HudRoot/LeftColumn`, with
   `HealthRow` above and a `SparkBlock` holding the label and `SparkRow`
@@ -143,9 +200,9 @@ is added, keep it minimal and treat any new sound as a placeholder.
   is killed and the position hard-reset at the start of every shake, because a
   killed tween never runs its own restore step.
 - **Tuning values are `@export`ed** on purpose. `recoil_force`,
-  `recoil_duration`, `max_hp`, `invuln_time`, `heal_cost`, and the enemy
-  durations are all inspector-tunable. Prefer adjusting an export over
-  hardcoding a value in logic.
+  `recoil_duration`, `max_hp`, `invuln_time`, `heal_cost`, the enemy
+  durations, and the aggro leash values are all inspector-tunable. Prefer
+  adjusting an export over hardcoding a value in logic.
 
 ## Conventions
 

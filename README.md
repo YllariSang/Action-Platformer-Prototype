@@ -16,7 +16,7 @@ Made in the Godot Engine 4.7 - Stable. 2D Action Platformer Prototype. A school 
 | Dash (i-frames) | `Left Shift` |
 | Parry | `Right Mouse` |
 | Shoot / charge Railgun | `Left Mouse` (hold) |
-| Heal (2 Sparks) | `Q` |
+| Heal (2 Sparks) | `Q` (hold) |
 | Restart | `R` |
 
 ### Mechanics:
@@ -25,7 +25,7 @@ Made in the Godot Engine 4.7 - Stable. 2D Action Platformer Prototype. A school 
 - Wall dash, slide, and jump
 - Shooting Kirklets
 - Bullet jumping
-- 3 HP, no passive regeneration
+- 5 HP, no passive regeneration
 - Healing costs 2 Sparks, so parrying is your only recovery
 
 ### MAIN GAMEPLAY LOOOOOOOOOOOOOOOOPPPPP:
@@ -34,10 +34,18 @@ Made in the Godot Engine 4.7 - Stable. 2D Action Platformer Prototype. A school 
 The game is hard, very much like a metroidvania if I make more levels but I want to focus on boss battles only, we will see the direction.
 
 ### Health &amp; Sparks:
-You have 3 HP and nothing regenerates on its own. A hit taken during parry recovery costs double, and a dash i-frame cancels any hit outright. Spending 2 Sparks restores 1 HP, which means every parry is either offence or survival — you cannot do both from the same Spark.
+You have 5 HP and nothing regenerates on its own. An open parry is a hard immunity, so nothing an enemy throws can connect while your guard is up — the attack is eaten, reflected, or whiffs into recovery, but it never costs you HP. A hit taken during parry recovery costs double, and a dash i-frame cancels any hit outright. Spending 2 Sparks restores 1 HP, which means every parry is either offence or survival — you cannot do both from the same Spark.
+
+Healing is a **hold**, not a tap. `Q` roots you in place for 0.6s, and you cannot parry, dash, or shoot through it. That is deliberate: a tap would be an instant 1 HP for the same 2 Sparks a parry pays, with no timing to get right, which quietly made the parry pointless. Sparks are charged on *completion*, so letting go costs only the time and the standing-still. Steering away cancels, and so does taking a hit — you have to find a gap, and you cannot heal into the i-frames a hit just granted you.
 
 ### HUD:
 Health and Sparks are shown on a fixed screen-space HUD in the top-left, not above the player. Red pips are HP, amber pips are Sparks, and the `[Q] HEAL 2` hint in the top-right lights up green whenever a heal is actually affordable.
+
+### Weapons:
+A normal shot costs 1 Spark for 15 damage. The railgun is a 1.0s hold costing 3 Sparks for 60 damage and punching through up to 3 targets, so it is 20 damage per Spark against the normal shot's 15. It used to be 45, which was exactly 15 per Spark too, so three normal shots matched it for the same cost and there was never a reason to charge. A wall still stops it.
+
+### Enemy aggro:
+Regular enemies are leashed. Past `aggro_range` they give up: no chase, no telegraphed dash, no live hitbox, and a flier stops shooting mid-burst. They drain out to a grey tint, trudge back to the spawn point, and re-engage the moment you come back into range. Backing off after a dash windup cancels the attack, but a dash that is already in flight still lands — the leash is not a free escape button. The boss is not leashed; it is a set piece.
 
 ### Art pipeline:
 Visuals currently use `icon.svg` as a placeholder throughout; real artwork is being prepared. Feedback is built so that swapping in finished art is a texture change rather than a code change: hit flashes run through a small shader (`Shaders/feedback_flash.gdshader` via `SpriteFeedback`) that layers on top of each entity's colour tint, so a stunned enemy stays visibly stunned while it flashes on impact.
