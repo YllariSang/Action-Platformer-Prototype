@@ -11,9 +11,13 @@ extends CharacterBody2D
 @export var parry_success_cooldown: float = 0.1 
 
 @export_category("Health")
-@export var max_hp: int = 3
+@export var max_hp: int = 5
 ## Health does not regenerate on its own. Sparks are the only way back.
 @export var heal_cost: int = 2
+## How long the heal channel must be held. Long enough that standing still to
+## heal is a real commitment next to a 0.8s parry cooldown, short enough to
+## still fit between a flier's shots.
+@export var heal_duration: float = 0.6
 @export var invuln_time: float = 1.0
 
 @export_category("Movement")
@@ -31,7 +35,7 @@ extends CharacterBody2D
 @export var coyote_time: float = 0.15 
 
 # --- STATE MACHINE ---
-enum State { IDLE, RUN, ATTACK, PARRY, DASH, STUNNED, RECOVERY, DEAD }
+enum State { IDLE, RUN, ATTACK, PARRY, DASH, STUNNED, RECOVERY, HEALING, DEAD }
 var current_state = State.IDLE
 var current_ammo: int = 0
 var facing_direction: int = 1
@@ -41,9 +45,23 @@ var can_dash: bool = true
 var coyote_timer: float = 0.0 
 
 # Health
-var hp: int = 3
+var hp: int = 5
 var invuln_timer: float = 0.0
 var is_dead: bool = false
+
+## Bumped whenever a heal channel ends, for any reason. The channel coroutine
+## holds the token it started with and bails once it no longer matches, which
+## is how a hit landing mid-channel stops the heal without the damage code
+## having to know that healing is a channel at all.
+var _heal_token: int = 0
+## Set whenever a channel ends early, cleared only when the heal key is let go.
+##
+## Without this the channel is polled from _physics_process while the key is
+## held, so the frame after any cancel it just started again: nudging the stick
+## made the player jitter between standing still and walking, and a hit was
+## followed instantly by a fresh channel that the i-frames then made free. Now
+## ending a channel means the player has to commit again from a released key.
+var _heal_locked: bool = false
 
 # Charging Variables
 var charge_timer: float = 0.0
@@ -163,7 +181,12 @@ func _physics_process(delta: float) -> void:
 	apply_recoil(delta)
 	
 	#MOVEMENT
-	if current_state != State.DASH and current_state != State.PARRY:
+	# HEALING is excluded alongside PARRY and DASH: a heal holds the player
+	# still, which is the whole cost of it. Gravity still runs above, so the
+	# player settles instead of hanging in the air.
+	if current_state == State.HEALING:
+		velocity.x = 0
+	elif current_state != State.DASH and current_state != State.PARRY:
 		handle_movement_and_jumps()
 	
 	# Apply the push on top of whatever movement just decided, and remember it
@@ -183,12 +206,21 @@ func _physics_process(delta: float) -> void:
 	#ACTIONS
 	handle_attack_input(delta)
 	
-	if Input.is_action_just_pressed("heal"):
-		try_to_heal()
-	elif Input.is_action_just_pressed("parry"):
+	if Input.is_action_just_pressed("parry"):
 		try_to_parry()
 	elif Input.is_action_just_pressed("dash"):
 		try_to_dash()
+	
+	# Heal is polled, not tapped: holding the key runs the channel, and the
+	# channel watches for the release itself. It is handled last because it
+	# suspends _physics_process while it runs, which would skip anything placed
+	# after it on the frame the channel starts. try_to_parry() and try_to_dash()
+	# refuse while HEALING, so the parry still cannot ride along with a heal.
+	if Input.is_action_pressed("heal"):
+		if not _heal_locked:
+			try_to_heal()
+	else:
+		_heal_locked = false
 
 # --- MOVEMENT LOGIC ---
 func handle_movement_and_jumps():
@@ -228,7 +260,12 @@ func handle_movement_and_jumps():
 
 # --- CHARGE & ATTACK LOGIC ---
 func handle_attack_input(delta):
-	if current_state == State.PARRY or current_state == State.DASH or current_state == State.RECOVERY:
+	# Losing the state has to drop the charge, otherwise releasing the mouse
+	# after a dash fires a railgun that was never charged up. The tint is not
+	# reset here: those states own sprite.modulate themselves. HEALING joins
+	# them so a channel cannot be shot out of, and the Sparks a channel is
+	# about to spend are not also being spent on a shot.
+	if current_state == State.PARRY or current_state == State.DASH or current_state == State.RECOVERY or current_state == State.HEALING:
 		# Losing the state has to drop the charge, otherwise releasing the mouse
 		# after a dash fires a railgun that was never charged up. The tint is not
 		# reset here: those states own sprite.modulate themselves.
@@ -335,7 +372,9 @@ func clear_recoil() -> void:
 	recoil_time_left = 0.0
 
 func try_to_dash():
-	if not can_dash or current_state == State.PARRY or current_state == State.RECOVERY: return
+	# HEALING refuses too: a dash is a free cancel out of a channel, which
+	# together with i-frames made healing a no-risk panic button.
+	if not can_dash or current_state == State.PARRY or current_state == State.RECOVERY or current_state == State.HEALING: return
 	
 	current_state = State.DASH
 	can_dash = false 
@@ -430,6 +469,18 @@ func _on_parry_cooldown_timer_timeout() -> void:
 
 # --- HELPERS ---
 
+## True while the player is inside a parry window, and for the remainder of the
+## frame in which a parry succeeded.
+##
+## The second half matters: a successful parry drops the parry box with
+## set_deferred() and moves the state to IDLE immediately, but an enemy hitbox
+## that is already overlapping the player can still report a body entry in that
+## same physics frame. Reading the state alone let that attack through a moment
+## after the player had parried it. Polling the box as well keeps the parry
+## authoritative for the whole frame it resolves in.
+func is_parrying() -> bool:
+	return current_state == State.PARRY or parry_box.monitoring
+
 func take_damage(amount: int):
 	if is_dead: return
 	
@@ -438,9 +489,16 @@ func take_damage(amount: int):
 		spawn_popup("DODGE!", Color(0.4, 0.8, 1.0))
 		return
 	
-	# Immunity window: a single bullet must not empty three hearts.
-	if invuln_timer > 0.0: return
+	# An open parry is a hard immunity, not just a chance to reflect. Enemy
+	# hitboxes and bullets both deliver damage through this function, so gating
+	# here covers every source in one place — no damage source can be added
+	# later that forgets the check. The attack is neither negated nor reflected
+	# by this; it simply does not connect, exactly like a whiffed swing would.
+	if is_parrying(): return
 	
+	# Immunity window: a single bullet must not empty the whole health bar.
+	if invuln_timer > 0.0: return
+
 	# Landing a parry leaves you wide open, so getting hit there hurts double.
 	if current_state == State.RECOVERY:
 		amount *= 2
@@ -448,6 +506,10 @@ func take_damage(amount: int):
 	# A hit can knock the last heart off even mid-recovery, so clamp here and
 	# let die() run rather than bailing out partway through the feedback.
 	hp = max(hp - amount, 0)
+	# Being hit interrupts a heal. This is the cost that makes standing still
+	# worth something: the channel is only safe in a gap between shots, so
+	# healing is something you find an opening for rather than mash on.
+	cancel_heal()
 	invuln_timer = invuln_time
 	update_ui()
 	spawn_popup("-%d" % amount, Color(1, 0.4, 0.4))
@@ -478,6 +540,9 @@ func die() -> void:
 	parry_box.monitorable = false
 	can_parry = false
 	can_dash = false
+	# After the state change, so this cannot put the player back into IDLE on
+	# its way to DEAD. It still bumps the token and kills the particles.
+	cancel_heal()
 	clear_recoil()
 	velocity = Vector2.ZERO
 	sprite.visible = true
@@ -491,8 +556,20 @@ func die() -> void:
 	if result_screen and result_screen.has_method("show_result"):
 		result_screen.show_result(false)
 
+## Start a heal channel, or refuse to. Polled from _physics_process while the
+## heal key is held, so it has to be safe to call every frame.
+##
+## Holding rather than tapping is the load-bearing decision. A tap would be an
+## instant 1 HP for heal_cost Sparks with nothing to lose, and at 2 Sparks that
+## is exactly what a successful parry pays: healing was the same HP as a parry
+## but with no timing requirement, which quietly made the parry pointless. The
+## channel costs time and mobility instead, occupies the key so a parry cannot
+## ride along with it, and is interruptible, so committing to it is a decision.
 func try_to_heal() -> void:
-	if is_dead: return
+	if is_dead or current_state == State.HEALING: return
+	# Refuse from every state the player has already committed to, so a heal can
+	# never be folded into a dash, a parry, or the recovery penalty.
+	if current_state != State.IDLE and current_state != State.RUN: return
 	
 	if hp >= max_hp:
 		spawn_popup("HP FULL", Color(0.5, 1, 0.5))
@@ -502,15 +579,81 @@ func try_to_heal() -> void:
 		spawn_popup("NEED %d SPARKS!" % heal_cost, Color(1, 0.7, 0.2))
 		return
 	
+	_heal_token += 1
+	var my_token := _heal_token
+	
+	current_state = State.HEALING
+	# Drop any leftover shot recoil, or the channel stands still for its first
+	# few frames and then slides.
+	clear_recoil()
+	velocity = Vector2.ZERO
+	heal_fire.emitting = true
+	heal_fire.amount_ratio = 0.0
+	label_heal.text = "HEALING..."
+	label_heal.modulate = Color(0.4, 1, 0.5, 1)
+	
+	var elapsed := 0.0
+	while Input.is_action_pressed("heal") and _heal_token == my_token:
+		# Steering away cancels. A heal that follows the player is not a
+		# commitment, it is just a slower normal shot.
+		if Input.get_axis("left", "right") != 0.0:
+			spawn_popup("CANCELLED", Color(0.6, 0.6, 0.6))
+			break
+		
+		# Fixed step, not get_physics_process_delta_time(): this coroutine resumes
+		# from the physics_frame signal rather than from _physics_process, and
+		# the delta is not readable in that context, so elapsed would sit at zero
+		# and the channel would never finish.
+		elapsed += 1.0 / float(Engine.physics_ticks_per_second)
+		# The particles fill up as the channel progresses. Cheapest honest
+		# progress read available without new art, and it doubles as the tell
+		# that a heal is running at all.
+		heal_fire.amount_ratio = clampf(elapsed / heal_duration, 0.0, 1.0)
+		
+		if elapsed >= heal_duration:
+			_finish_heal()
+			return
+		
+		await get_tree().physics_frame
+	
+	# Fell out without completing: released the key, steered off, or something
+	# bumped the token (a hit landed).
+	cancel_heal()
+
+## The Sparks are charged here, on completion, not on press. A cancelled channel
+## therefore costs only the time and the exposure, never the resources, which
+## means there is no refund path to get wrong and no way to feel cheated.
+func _finish_heal() -> void:
+	_heal_token += 1
+	current_state = State.IDLE
+	
 	current_ammo -= heal_cost
 	hp = min(hp + 1, max_hp)
-	update_ui()
-	spawn_popup("+1 HP", Color(0.4, 1, 0.5))
-	heal_fire.restart()
+	
+	heal_fire.emitting = false
+	heal_fire.amount_ratio = 0.0
 	# Green flash so the heal reads on the player itself, not just the particles.
 	SpriteFeedback.flash(sprite, Color(0.4, 1, 0.5), 1.0, 0.25)
 	frame_freeze(0.3, 0.08)
 	get_tree().call_group("camera", "add_shake", 0.2)
+	spawn_popup("+1 HP", Color(0.4, 1, 0.5))
+	heal_fire.restart()
+	update_ui()
+
+## Abort a channel in progress. Called when the key is released, when the player
+## steers away, when a hit lands, and on death. The damage path only has to
+## know that healing can be interrupted, not how it works.
+func cancel_heal() -> void:
+	_heal_token += 1
+	if current_state == State.HEALING:
+		current_state = State.IDLE
+		# Require the key to be released before another channel can start, so an
+		# interrupted heal stays interrupted instead of resuming a frame later
+		# into the safety of the i-frames that the interrupt just granted.
+		_heal_locked = true
+	heal_fire.emitting = false
+	heal_fire.amount_ratio = 0.0
+	update_ui()
 
 ## Build the pip rows to match max_hp / max_ammo. Called on ready and whenever
 ## those values change at runtime, so the HUD is never hardcoded to 3 and 6.
@@ -551,9 +694,12 @@ func update_ui():
 	
 	# 1b. HEAL HINT
 	# Brightens once a heal is actually affordable, so the cost is discoverable
-	# without needing a popup every time the player wonders.
+	# without needing a popup every time the player wonders. The text is owned
+	# by the channel while one is running, so this leaves it alone then.
 	var can_heal := not is_dead and hp < max_hp and current_ammo >= heal_cost
 	label_heal.modulate = Color(0.5, 1, 0.6, 1) if can_heal else Color(0.5, 0.5, 0.55, 1)
+	if current_state != State.HEALING:
+		label_heal.text = "[Q] HEAL %d" % heal_cost
 	
 	# 2. FIRE LOGIC
 	if current_ammo == 0:

@@ -21,6 +21,14 @@ func _on_body_entered(body):
 	# Hitting Player (Normal Behavior)
 	if body.name == "Player":
 		if not is_reflected:
+			# A parry in progress is a hard immunity, but the parry box is
+			# directional: it only catches what comes from the way the player is
+			# facing. Without this, a bullet that slipped past the box would be
+			# consumed on the player's body while their guard was still up. Skip
+			# the player entirely and leave the bullet alive, so it can still be
+			# reflected a frame later instead of being silently eaten.
+			if body.has_method("is_parrying") and body.is_parrying():
+				return
 			if body.has_method("take_damage"):
 				body.take_damage(damage)
 			queue_free()
