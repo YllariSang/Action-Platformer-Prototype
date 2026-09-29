@@ -19,6 +19,18 @@ var current_state = State.IDLE
 @export var stun_duration: float = 2.0
 @export var parry_knockback: float = 300.0
 
+@export_group("Chase")
+## Straight-line distance at which the dash is worth committing to. Was a
+## hardcoded 250, and was compared against the x-only distance, which is why a
+## player on the platform above used to draw a dash into empty air.
+@export var dash_trigger_range: float = 250.0
+## How far above or below the enemy a target can be and still be dashed at.
+## Kept tight because a ground enemy's dash is horizontal; without this the
+## vertical half of the room is a target it can never hit.
+@export var dash_vertical_range: float = 120.0
+## Straight-line distance within which the enemy keeps closing in.
+@export var chase_range: float = 600.0
+
 @export_group("Aggro")
 ## Leash radius. Past this the enemy drops aggro entirely: no chase, no dash,
 ## no live hitbox. Kept well above the 600px chase threshold so an enemy that
@@ -106,11 +118,21 @@ func _physics_process(delta):
 		State.CHASE:
 			if is_instance_valid(player_ref):
 				var dir = (player_ref.global_position - global_position).normalized()
-				var dist = abs(player_ref.global_position.x - global_position.x)
+				# Typed explicitly because player_ref is untyped, so `:=` on a
+				# Variant member has nothing to infer from.
+				var to_player: Vector2 = player_ref.global_position - global_position
 				
-				if dist < 250: # Trigger Dash Attack
+				# The dash triggers on the straight-line distance *and* a vertical
+				# tolerance, not on the x-only distance the chase uses. The x-only
+				# version treated a player standing on a platform directly above as
+				# a valid target, so the enemy telegraphed, dashed, and hit nothing
+				# — which reads as the attack bugging out rather than the player
+				# having evaded it. A ground enemy should commit to something it
+				# can actually reach.
+				if to_player.length() < dash_trigger_range \
+						and absf(to_player.y) < dash_vertical_range:
 					start_dash_attack()
-				elif dist < 600: # Normal Chase
+				elif to_player.length() < chase_range:
 					velocity.x = sign(dir.x) * speed
 					sprite.flip_h = (dir.x < 0)
 				else:

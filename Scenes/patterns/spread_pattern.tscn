@@ -1,0 +1,15 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Scripts/patterns/spread_pattern.gd" id="1_spread"]
+
+[node name="Spread" type="Node2D"]
+script = ExtResource("1_spread")
+duration = 2.0
+weight = 1.0
+tint = Color(1, 0.6, 0.2, 1)
+shots = 5
+spread = 0.2
+wind_up = 0.45
+volley_interval = 0.0
+max_volleys = 1
+phase_two_spread = 0.12

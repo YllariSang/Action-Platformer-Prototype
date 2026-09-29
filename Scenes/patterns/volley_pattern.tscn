@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Scripts/patterns/volley_pattern.gd" id="1_volley"]
+
+[node name="Volley" type="Node2D"]
+script = ExtResource("1_volley")
+duration = 4.0
+weight = 1.2
+tint = Color(1, 0.2, 0.2, 1)
+shot_interval = 0.85
+phase_two_shot_interval = 0.55
+lead_in = 0.6
+shots = 1
+spread = 0.12

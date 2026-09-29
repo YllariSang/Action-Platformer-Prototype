@@ -28,6 +28,23 @@ Made in the Godot Engine 4.7 - Stable. 2D Action Platformer Prototype. A school 
 - 5 HP, no passive regeneration
 - Healing costs 2 Sparks, so parrying is your only recovery
 
+### Template areas
+Two test areas, both runnable on their own (**Run Current Scene**, F6, from the editor):
+
+- **`Scenes/test_lab.tscn` — enemy lab.** Start at the left and work right. Zone 1 is the dummy for learning the parry window, zone 2 is the melee enemy's telegraphed dash (stand on the step and bait it from above — it should now miss), zone 3 is a wall-jump / slide / dash shaft, zone 4 is the flier, with its 800px leash marked on the floor.
+- **`Scenes/boss_arena.tscn` — a full boss fight.** 1400×700, deliberately larger than the 1152×648 viewport so positioning matters. Walk right into the trigger to start. This is also the reusable arena: drop `boss.tscn` and an `Arena` node into any level and the fight works.
+
+`Scenes/main.tscn` is still the original playtest area and still works.
+
+### Bosses
+A boss is **a list of attack patterns**, not a hardcoded state machine. Each attack is its own small scene in `Scripts/patterns/` — a duration, a weight, a phase, a boss tint, and a `tick()`. The boss instantiates one per use and drives it, so **a new attack is a new file** rather than a new branch in the boss script.
+
+Four patterns ship: **Spiral** (rotating radial burst), **Spread** (an aimed fan, re-aimed every volley so walking sideways genuinely dodges it), **Volley** (single shots at a readable cadence — the one that actually teaches the parry), and **Sweep** (a wall of bullets with one gap that moves, which punishes *not looking* rather than bad reflexes).
+
+The boss picks from them by **weight, and never repeats one twice running** — a coin flip has no rhythm, and a fight is memorable because of the order its attacks arrive in. Phase two doesn't swap the set: it adds `phase = 2` patterns, speeds up the ones already there, and repositions the boss.
+
+The beat is **attack → punish window → reposition → attack**, and that punish window is the main thing to tune if the fight feels unfair. The death cinematic is skippable with any combat input.
+
 ### MAIN GAMEPLAY LOOOOOOOOOOOOOOOOPPPPP:
 - Game will revolve around using parry to accumulate ammo called "Spark", said ammo has a maximum capacity of 6/6 and can be utilized in different ways. Normal shots costs 1/6, railgun costs 3/6, healing costs 2/6, reflecting enemy projectiles can be done while performing a parry in 6/6.
 

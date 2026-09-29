@@ -1,0 +1,113 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="PackedScene" path="res://Scenes/player.tscn" id="1_player"]
+[ext_resource type="PackedScene" path="res://Scenes/dummy.tscn" id="2_dummy"]
+[ext_resource type="PackedScene" path="res://Scenes/melee_enemy.tscn" id="3_melee"]
+[ext_resource type="PackedScene" path="res://Scenes/flying_enemy.tscn" id="4_flier"]
+[ext_resource type="PackedScene" path="res://Scenes/platform.tscn" id="5_platform"]
+[ext_resource type="PackedScene" path="res://Scenes/result_screen.tscn" id="6_result"]
+[ext_resource type="Script" path="res://Scripts/zone_label.gd" id="7_label"]
+
+[node name="TestLab" type="Node2D"]
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector2(-1450, 0)
+
+[node name="Dummy" parent="." instance=ExtResource("2_dummy")]
+position = Vector2(-1180, 0)
+
+[node name="MeleeEnemy" parent="." instance=ExtResource("3_melee")]
+position = Vector2(-620, -180)
+
+[node name="FlyingEnemy" parent="." instance=ExtResource("4_flier")]
+position = Vector2(700, -380)
+
+[node name="Ground" parent="." instance=ExtResource("5_platform")]
+position = Vector2(0, 20)
+size = Vector2(3200, 40)
+
+[node name="Ceiling" parent="." instance=ExtResource("5_platform")]
+position = Vector2(0, -760)
+size = Vector2(3200, 40)
+
+[node name="MeleeOverhead" parent="." instance=ExtResource("5_platform")]
+position = Vector2(-620, -400)
+size = Vector2(320, 30)
+
+[node name="MeleeStep" parent="." instance=ExtResource("5_platform")]
+position = Vector2(-880, -200)
+size = Vector2(200, 30)
+
+[node name="WallJumpA" parent="." instance=ExtResource("5_platform")]
+position = Vector2(100, -220)
+size = Vector2(40, 480)
+
+[node name="WallJumpB" parent="." instance=ExtResource("5_platform")]
+position = Vector2(520, -220)
+size = Vector2(40, 480)
+
+[node name="DashLedge" parent="." instance=ExtResource("5_platform")]
+position = Vector2(900, -300)
+size = Vector2(260, 30)
+
+[node name="FlierLedge" parent="." instance=ExtResource("5_platform")]
+position = Vector2(1320, -240)
+size = Vector2(220, 30)
+
+[node name="LeashMarkerFar" parent="." instance=ExtResource("5_platform")]
+position = Vector2(-1420, -20)
+size = Vector2(12, 40)
+color = Color(0.35, 0.2, 0.5, 0.5)
+border = Color(0.6, 0.4, 0.9, 0.7)
+
+[node name="Title" type="Label" parent="."]
+offset_left = -520.0
+offset_top = -760.0
+offset_right = 520.0
+offset_bottom = -718.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.7, 1, 0.85, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 22
+text = "ENEMY TEST LAB  —  start at the left and work right"
+horizontal_alignment = 1
+
+[node name="ZoneParry" type="Label" parent="."]
+script = ExtResource("7_label")
+offset_left = -1360.0
+offset_top = -200.0
+offset_right = -1000.0
+offset_bottom = -110.0
+text = "ZONE 1  PARRY\nThe dummy telegraphs yellow, then\nstrikes. Parry it, or use it to\nlearn the 0.2s window."
+
+[node name="ZoneMelee" type="Label" parent="."]
+script = ExtResource("7_label")
+offset_left = -900.0
+offset_top = -600.0
+offset_right = -400.0
+offset_bottom = -510.0
+text = "ZONE 2  MELEE DASH\nStand on the step and bait the\ndash from above: it should miss\nonce you are out of its x-range."
+
+[node name="ZoneWall" type="Label" parent="."]
+offset_left = 40.0
+offset_top = -700.0
+offset_right = 620.0
+offset_bottom = -640.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 18
+text = "ZONE 3  WALL JUMP / SLIDE / DASH"
+horizontal_alignment = 1
+
+[node name="ZoneFlier" type="Label" parent="."]
+script = ExtResource("7_label")
+offset_left = 1080.0
+offset_top = -420.0
+offset_right = 1560.0
+offset_bottom = -320.0
+text = "ZONE 4  FLIER\nIt holds a 350px gap and fires\nbursts of three. Break its leash\nby leaving the 800px ring."
+
+[node name="ResultScreen" parent="." instance=ExtResource("6_result")]

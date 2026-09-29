@@ -103,6 +103,55 @@ is added, keep it minimal and treat any new sound as a placeholder.
 
 ## Project facts worth knowing
 
+- **A boss is a list of attack patterns, not a state machine.** `boss.gd` knows
+  about pacing and nothing about attacks. Every attack is a `BossPattern` scene
+  under `Scripts/patterns/` with a `duration`, a `weight`, a `phase`, a `tint`,
+  and a `tick(delta)`. The boss instantiates one per use, drives it, and stops
+  it. The prototype instead hardcoded `INTRO / IDLE / SPIRAL / SHOTGUN / TIRED
+  / TELEPORT / DYING` in one function and chose between its two attacks with
+  `randi() % 2`; adding an attack there meant adding a branch to a 250-line
+  file, and a coin flip has no rhythm. Four things are load-bearing:
+  - **Selection is a weighted pool that will not repeat back to back.** See
+    `_pick_pattern()`. A fight is memorable because of the *order* its attacks
+    arrive in, so `weight` and the no-repeat rule are the design knobs, not a
+    starting point to replace with `randi()`.
+  - **`phase = 2` patterns are added to phase 1, never swapped in for them.**
+    Phase two only speeds things up (`bullet_speed_mult`, each pattern's
+    `phase_two_*` value) and repositions the boss.
+  - **Patterns are driven, never self-ticking.** `begin` / `tick` / `end` are
+    called by the boss. A pattern with its own `_physics_process` would keep
+    firing through a phase change, through the boss dying, and through the
+    player dying. `end()` is the only place a pattern cleans up, so anything it
+    starts that the boss will not tear down belongs there.
+  - **`elapsed` accumulates the scaled physics delta**, so a pattern slows
+    inside a parry hit-stop along with the world. The prototype's spiral fired
+    on `Engine.get_physics_frames() % 5`, which is a wall-clock timer, so it
+    spat bullets into a screen that had nearly stopped.
+- **The arena owns its own bounds.** A boss reads an `ArenaBounds` node named
+  `Arena` (`Scripts/arena_bounds.gd`) instead of four
+  `limit_left/right/top/bottom` exports. One exported size positioned by a node
+  cannot disagree with itself, and the arena can move without touching the boss.
+  `random_point(avoid, clearance)` is what stops a teleport landing the boss
+  inside the player.
+- **`_set_state()` ignores a request for the state it is already in**, and the
+  check happens *before* the assignment, because after it the two are
+  indistinguishable. That is what stops a second teleport starting while one is
+  in flight, which would leave two fade tweens fighting over one sprite's alpha.
+  The consequence to remember: `_ready()` cannot call
+  `_set_state(State.INACTIVE)`, because `current_state` is already `INACTIVE`
+  from its member initialiser and the call would silently do nothing. The
+  dormant presentation is applied directly there instead.
+- **The template areas use `Scripts/platform.gd`, not a TileMapLayer.** Size is
+  an export and the collision shape is built in `_ready()`, so one scene is
+  instanced at any size from a property. Hand-authoring TileSet collision for a
+  rig that gets reshaped while tuning is not worth it; the production level
+  still uses its TileMapLayer.
+- **The melee enemy will not dash at a player it cannot reach.** The dash
+  triggers on the straight-line distance and a `dash_vertical_range` tolerance,
+  not on the x-only distance the chase uses. The x-only version treated a player
+  standing on the platform directly above as valid, so the enemy telegraphed,
+  dashed, and hit nothing — which reads as the attack bugging out rather than
+  the player having evaded it.
 - **Godot 4.7**, not 4.5. The README previously said 4.5; that was wrong.
   `TileMapLayer` moved `collision_layer`/`collision_mask` onto the `TileSet` in
   4.7, and collision layers now live in the `TileSet` sub-resource of

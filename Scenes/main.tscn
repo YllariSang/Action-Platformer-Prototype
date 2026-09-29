@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=4 uid="uid://faj0okc50kl4"]
+[gd_scene load_steps=14 format=4 uid="uid://faj0okc50kl4"]
 
 [ext_resource type="PackedScene" uid="uid://c4lot0lmo8fdt" path="res://Scenes/player.tscn" id="1_0xm2m"]
 [ext_resource type="Texture2D" uid="uid://b36jrcya87ivr" path="res://icon.svg" id="2_h2yge"]
@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" uid="uid://cafj7hxlulfef" path="res://Scenes/flying_enemy.tscn" id="6_6bp64"]
 [ext_resource type="PackedScene" uid="uid://drot3t2abc2wm" path="res://Scenes/melee_enemy.tscn" id="7_344ge"]
 [ext_resource type="PackedScene" path="res://Scenes/result_screen.tscn" id="8_result"]
+[ext_resource type="Script" path="res://Scripts/arena_bounds.gd" id="9_bounds"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_1bvp3"]
 texture = ExtResource("2_h2yge")
@@ -103,12 +104,13 @@ tile_set = SubResource("TileSet_lquwl")
 [node name="Dummy" parent="." instance=ExtResource("3_h2yge")]
 position = Vector2(281, 0)
 
+[node name="Arena" type="Node2D" parent="."]
+position = Vector2(798.5, -768.5)
+script = ExtResource("9_bounds")
+size = Vector2(947, 337)
+
 [node name="Boss" parent="." instance=ExtResource("4_1bvp3")]
 position = Vector2(801, -896)
-limit_left = 325.0
-limit_right = 1272.0
-limit_top = -937.0
-limit_bottom = -600.0
 
 [node name="BossTrigger" type="Area2D" parent="." node_paths=PackedStringArray("boss_node")]
 position = Vector2(-58, 3)

@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Scripts/patterns/sweep_pattern.gd" id="1_sweep"]
+
+[node name="Sweep" type="Node2D"]
+script = ExtResource("1_sweep")
+duration = 4.5
+weight = 0.9
+tint = Color(0.4, 0.8, 1, 1)
+columns = 16
+gap_width = 2
+sweep_interval = 1.4
+wind_up = 0.6
+hint_time = 0.45
+rows = 1
+phase_two_gap_width = 1
