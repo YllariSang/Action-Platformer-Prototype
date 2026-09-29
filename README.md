@@ -38,6 +38,8 @@ You have 5 HP and nothing regenerates on its own. An open parry is a hard immuni
 
 Healing is a **hold**, not a tap. `Q` roots you in place for 0.6s, and you cannot parry, dash, or shoot through it. That is deliberate: a tap would be an instant 1 HP for the same 2 Sparks a parry pays, with no timing to get right, which quietly made the parry pointless. Sparks are charged on *completion*, so letting go costs only the time and the standing-still. You can press `Q` while already running and the channel starts anyway — the commitment is the hold, not standing still first. Letting go of `Q` cancels it, and so does pressing a direction *after* the channel is under way, or taking a hit. You have to find a gap, and you cannot heal into the i-frames a hit just granted you. If you press `Q` at full health, or short on Sparks, you are told once; hold it as long as you like and the message does not repeat until you let go.
 
+The camera closes in slowly while the channel runs, and lets go with a brief white flash on the screen whenever it ends — finished, steered away, or interrupted. It is punctuation, not a spotlight: the zoom is a walk you watch happen, and the flash is short enough to read without looking through.
+
 ### HUD:
 Health and Sparks are shown on a fixed screen-space HUD in the top-left, not above the player. Red pips are HP, amber pips are Sparks, and the `[Q] HEAL 2` hint in the top-right lights up green whenever a heal is actually affordable.
 

@@ -18,6 +18,12 @@ extends CharacterBody2D
 ## heal is a real commitment next to a 0.8s parry cooldown, short enough to
 ## still fit between a flier's shots.
 @export var heal_duration: float = 0.6
+## Peak alpha of the screen flash that marks the camera letting go of a heal.
+## Kept low and short on purpose. It is punctuation for the zoom pulling back,
+## not an effect the player has to see the fight through, so a value that reads
+## as a "wow" on its own would be the wrong instinct here.
+@export var heal_flash_alpha: float = 0.22
+@export var heal_flash_time: float = 0.28
 @export var invuln_time: float = 1.0
 
 @export_category("Movement")
@@ -112,6 +118,11 @@ var recoil_applied_x: float = 0.0 # what was added to velocity.x last frame
 @onready var spark_row: HBoxContainer = $UI/HudRoot/LeftColumn/SparkBlock/SparkRow
 @onready var label_spark: Label = $UI/HudRoot/LeftColumn/SparkBlock/SparkLabel
 @onready var label_heal: Label = $UI/HudRoot/HealHint
+## Full-screen flash that punctuates the camera pulling back out of a heal.
+## Lives under the same screen-space UI layer as the HUD rather than on the
+## camera, because a Camera2D is not a CanvasLayer and cannot host a viewport-
+## sized overlay itself. See flash_heal_release().
+@onready var heal_flash: ColorRect = $UI/HealFlash
 
 ## Built in code rather than placed in the scene so that changing `max_hp` or
 ## `max_ammo` in the inspector just works. See rebuild_hud().
@@ -140,6 +151,10 @@ var popup_scene = preload("res://Scenes/popup.tscn")
 var hud_rest_pos: Vector2 = Vector2.ZERO
 var _hud_shake_tween: Tween = null
 var _hud_rest_captured := false
+
+## The running screen flash, so an overlapping one can be killed rather than
+## stacked. Mirrors _hud_shake_tween, for the same reason.
+var _heal_flash_tween: Tween = null
 
 var was_max_ammo = false
 
@@ -560,6 +575,14 @@ func die() -> void:
 	can_dash = false
 	# After the state change, so this cannot put the player back into IDLE on
 	# its way to DEAD. It still bumps the token and kills the particles.
+	#
+	# No camera-focus release here, and that is deliberate: a lethal hit always
+	# arrives through take_damage(), which calls cancel_heal() while the state is
+	# still HEALING, so the focus is already on its way out by the time this
+	# runs. Adding a second release would be an unreachable path that reads as
+	# if death had its own special case. The invariant that actually holds is
+	# simply: a channel ends in _finish_heal() or cancel_heal(), and those two
+	# are the only exits, so those two are the only places that release.
 	cancel_heal()
 	clear_recoil()
 	velocity = Vector2.ZERO
@@ -615,6 +638,9 @@ func try_to_heal() -> void:
 	var my_token := _heal_token
 	
 	current_state = State.HEALING
+	# Open the camera's focus here rather than on the first frame of the loop
+	# below, so the push-in starts on the press instead of a frame later.
+	set_heal_focus(true)
 	# Drop any leftover shot recoil, or the channel stands still for its first
 	# few frames and then slides.
 	clear_recoil()
@@ -668,6 +694,7 @@ func try_to_heal() -> void:
 func _finish_heal() -> void:
 	_heal_token += 1
 	current_state = State.IDLE
+	set_heal_focus(false)
 	
 	current_ammo -= heal_cost
 	hp = min(hp + 1, max_hp)
@@ -693,9 +720,50 @@ func cancel_heal() -> void:
 		# interrupted heal stays interrupted instead of resuming a frame later
 		# into the safety of the i-frames that the interrupt just granted.
 		_heal_locked = true
+		# Gated on actually being HEALING, which is what the state read above
+		# does. take_damage() calls cancel_heal() on every hit, so releasing the
+		# focus unconditionally would pop a heal flash and pull the camera back
+		# in the middle of an ordinary fight with no channel to have opened.
+		set_heal_focus(false)
 	heal_fire.emitting = false
 	heal_fire.amount_ratio = 0.0
 	update_ui()
+
+## Drive the camera's heal focus, and flash the screen when it lets go.
+##
+## The zoom itself lives in camera.gd, walked toward a target rather than
+## assigned, so opening and closing are the same kind of slow move. The camera
+## is reached by group like every other one, and the flash is owned here because
+## the player already owns the screen-space HUD this one sits beside.
+##
+## Called on the channel's first frame and again from whichever end it takes
+## (_finish_heal or cancel_heal), which are the only two exits a channel has.
+## The flash therefore marks "the channel ended" and nothing else: finishing,
+## steering away, and being hit all punctuate the same way. A lethal hit lands
+## here too, on top of its own red hit flash, which is the one case where the
+## player never gets to watch the zoom walk back because the result screen
+## pauses the tree on the same frame.
+func set_heal_focus(active: bool) -> void:
+	get_tree().call_group("camera", "set_heal_focus", active)
+	if active: return
+	flash_heal_release()
+
+## The flash itself. Kills any flash still in flight before starting a new one,
+## for the same reason shake_ui() does: a healed-cancelled pair in quick
+## succession would otherwise stack two tweens writing the same alpha and leave
+## the screen brighter than a single flash is meant to reach.
+func flash_heal_release() -> void:
+	if _heal_flash_tween != null and _heal_flash_tween.is_valid():
+		_heal_flash_tween.kill()
+	heal_flash.color.a = heal_flash_alpha
+	var tween := create_tween()
+	_heal_flash_tween = tween
+	tween.tween_property(heal_flash, "color:a", 0.0, heal_flash_time) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(_finish_heal_flash)
+
+func _finish_heal_flash() -> void:
+	_heal_flash_tween = null
 
 ## Build the pip rows to match max_hp / max_ammo. Called on ready and whenever
 ## those values change at runtime, so the HUD is never hardcoded to 3 and 6.

@@ -230,7 +230,28 @@ is added, keep it minimal and treat any new sound as a placeholder.
   side by side. Pips are built in code by `rebuild_hud()` from `max_hp` /
   `max_ammo`, so changing those in the inspector just works — do not
   hardcode pip counts or add them to the scene. The old
-  `Sprite2D/SkewContainer` is gone.
+  `Sprite2D/SkewContainer` is gone. `UI/HealFlash` is also a child of `UI`,
+  not of the HUD root: it is the full-screen white rect that punctuates a heal
+  releasing, so it has to sit above `HudRoot` in draw order. It carries
+  `mouse_filter = 2` (IGNORE) so it cannot eat the mouse the player aims with.
+- **The camera zooms for a heal, and the release is where it flashes.**
+  `camera.gd` holds `_rest_zoom` (whatever zoom the scene authored, captured in
+  `_ready()`, so a designer can set zoom in the inspector without having to keep
+  an export in sync) and walks `zoom` toward `_rest_zoom * heal_zoom_mult`. The
+  walk uses `1.0 - exp(-zoom_speed * delta)`, not the `lerp(a, b, speed * delta)`
+  form the pan above uses — that one is frame-rate dependent, so the zoom would
+  cover less ground at 144Hz than at 60Hz. `heal_zoom_mult` is a multiplier, not
+  an absolute `Vector2`, so it composes with the authored zoom instead of
+  overwriting it. The flash lives with the player rather than the camera because
+  a `Camera2D` is not a `CanvasLayer` and cannot host a viewport-sized overlay
+  itself. **A channel has exactly two exits, `_finish_heal()` and
+  `cancel_heal()`, and those are the only two places that release the focus.**
+  Do not add a release to `die()`: a lethal hit always arrives through
+  `take_damage()`, which calls `cancel_heal()` while the state is still
+  `HEALING`, so the focus is already on its way out and a second release would
+  be an unreachable path that reads as if death had its own special case. That
+  also means an interrupted channel flashes, lethal or not, which is
+  consistent — the flash marks "the channel ended" and nothing else.
 - **Do not tween a `Container` child's `position`.** Containers rewrite child
   positions on every layout pass, so the tween snaps back. `shake_ui()`
   shakes `hud_column` (a child of the plain `HudRoot` `Control`) instead.
