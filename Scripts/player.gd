@@ -76,6 +76,24 @@ extends CharacterBody2D
 # that decide whether the player is free to act.
 enum State { IDLE, ATTACK, PARRY, DASH, RECOVERY, HEALING, DEAD }
 var current_state = State.IDLE
+
+## Placeholder pose textures exported from the owner-supplied Aseprite sources.
+## They are deliberately still plain Sprite2D textures: each source currently
+## contains one frame, and swapping textures lets the art be exercised without
+## pretending that a one-frame file is an animation.
+const IDLE_TEXTURE: Texture2D = preload("res://Assets/Idle.png")
+const RUN_TEXTURE: Texture2D = preload("res://Assets/Run.png")
+const JUMP_TEXTURE: Texture2D = preload("res://Assets/Jump.png")
+const FALL_TEXTURE: Texture2D = preload("res://Assets/Fall.png")
+const DASH_TEXTURE: Texture2D = preload("res://Assets/Dash.png")
+const PARRY_TEXTURE: Texture2D = preload("res://Assets/Parry.png")
+const RECOVERY_TEXTURE: Texture2D = preload("res://Assets/Recovery.png")
+const HEAL_TEXTURE: Texture2D = preload("res://Assets/heal.png")
+const HURT_TEXTURE: Texture2D = preload("res://Assets/Hurt.png")
+const DEATH_TEXTURE: Texture2D = preload("res://Assets/Death.png")
+const SHOOT_TEXTURE: Texture2D = preload("res://Assets/shoot.png")
+const RAILGUN_TEXTURE: Texture2D = preload("res://Assets/Railgun.png")
+
 var current_ammo: int = 0
 var facing_direction: int = 1
 var can_parry: bool = true 
@@ -93,6 +111,16 @@ var _dash_cooldown_left: float = 0.0
 var hp: int = 5
 var invuln_timer: float = 0.0
 var is_dead: bool = false
+
+## Damage is not a committed gameplay state, but it still needs a brief pose.
+## This timer is visual only and never changes movement or input rules.
+var _hurt_pose_left: float = 0.0
+## The flattened shoot/railgun placeholders are full-body poses. Record whether
+## the shot began from a deliberate standstill so moving shots can keep their
+## locomotion pose instead of snapping the entire body into a standing frame.
+var _shot_uses_full_body_pose: bool = false
+var _shot_pose: Texture2D = SHOOT_TEXTURE
+var _shot_facing: int = 1
 
 ## Bumped whenever a heal channel ends, for any reason. The channel coroutine
 ## holds the token it started with and bails once it no longer matches, which
@@ -195,6 +223,7 @@ func _ready() -> void:
 	parry_box.monitorable = false
 	heal_fire.emitting = false
 	SpriteFeedback.attach(sprite)
+	sprite.texture = IDLE_TEXTURE
 	
 	if not dash_timer.timeout.is_connected(_on_dash_timer_timeout):
 		dash_timer.timeout.connect(_on_dash_timer_timeout)
@@ -212,7 +241,10 @@ func _physics_process(delta: float) -> void:
 	# A dead player keeps falling (so the body drops) but takes no input.
 	if is_dead:
 		tick_invuln_blink(delta)
+		_update_visual_pose()
 		return
+
+	_hurt_pose_left = maxf(0.0, _hurt_pose_left - delta)
 	
 	# Strip the horizontal push applied last frame. Without this it would be
 	# read back as part of velocity.x by move_toward() and compound every frame.
@@ -279,6 +311,8 @@ func _physics_process(delta: float) -> void:
 			try_to_heal()
 	else:
 		_heal_locked = false
+
+	_update_visual_pose()
 
 # --- MOVEMENT LOGIC ---
 func handle_movement_and_jumps():
@@ -359,7 +393,7 @@ func handle_attack_input(delta):
 
 func fire_normal_shot():
 	if current_ammo > 0:
-		spawn_bullet(bullet_scene, 1, shot_recoil_mult)
+		spawn_bullet(bullet_scene, 1, shot_recoil_mult, SHOOT_TEXTURE)
 		current_ammo -= 1
 		update_ui()
 	else:
@@ -367,7 +401,7 @@ func fire_normal_shot():
 
 func fire_railgun():
 	if current_ammo >= railgun_cost:
-		spawn_bullet(railgun_scene, 2.0, railgun_recoil_mult) 
+		spawn_bullet(railgun_scene, 2.0, railgun_recoil_mult, RAILGUN_TEXTURE)
 		current_ammo -= railgun_cost
 		update_ui()
 		spawn_popup("RAILGUN!", Color(0, 1, 1))
@@ -375,13 +409,16 @@ func fire_railgun():
 		spawn_popup("NEED 3 SPARKS!", Color(1, 0, 0))
 		fire_normal_shot()
 
-func spawn_bullet(scene_to_spawn, shake_amount, recoil_mult):
+func spawn_bullet(scene_to_spawn, shake_amount, recoil_mult, pose: Texture2D = SHOOT_TEXTURE):
 	if not scene_to_spawn: return
 	
 	current_state = State.ATTACK
+	_shot_uses_full_body_pose = _has_stationary_movement_input()
+	_shot_pose = pose
 	
 	var mouse_pos = get_global_mouse_position()
 	var dir_vec = (mouse_pos - global_position).normalized()
+	_shot_facing = -1 if dir_vec.x < 0.0 else 1
 	
 	var b = scene_to_spawn.instantiate()
 	get_parent().add_child(b)
@@ -487,6 +524,76 @@ func _on_dash_timer_timeout():
 func reset_player_tint() -> void:
 	SpriteFeedback.clear(sprite)
 	SpriteFeedback.set_tint(sprite, Color(1, 1, 1))
+
+
+## Resolve one full-body placeholder pose without allowing a brief combat action
+## to erase the player's movement read.
+##
+## The shoot and railgun sources are flattened standing poses. They are used
+## only when the player deliberately stands on the ground. While running or in
+## the air, the locomotion pose stays visible and the existing glow, recoil,
+## projectile, flash, and camera kick communicate the weapon action instead.
+func _update_visual_pose() -> void:
+	var next_texture := _locomotion_texture()
+	var override_facing := 0
+
+	match current_state:
+		State.DEAD:
+			next_texture = DEATH_TEXTURE
+		State.DASH:
+			next_texture = DASH_TEXTURE
+		State.PARRY:
+			next_texture = PARRY_TEXTURE
+			override_facing = -1 if get_global_mouse_position().x < global_position.x else 1
+		State.RECOVERY:
+			next_texture = RECOVERY_TEXTURE
+		State.HEALING:
+			next_texture = HEAL_TEXTURE
+		State.ATTACK:
+			if _shot_uses_full_body_pose and _has_stationary_movement_input():
+				next_texture = _shot_pose
+				override_facing = _shot_facing
+		State.IDLE:
+			# Charging is a modifier, not a movement state. Only a grounded,
+			# motionless player uses the full-body railgun pose; every other action
+			# keeps its own silhouette and receives the cyan charge feedback.
+			if is_charging and charge_timer > 0.1 and _can_use_stationary_charge_pose():
+				next_texture = RAILGUN_TEXTURE
+				override_facing = -1 if get_global_mouse_position().x < global_position.x else 1
+
+	# Hurt is a short visual overlay rather than a state. Death remains absolute.
+	if _hurt_pose_left > 0.0 and current_state != State.DEAD:
+		next_texture = HURT_TEXTURE
+
+	if sprite.texture != next_texture:
+		sprite.texture = next_texture
+
+	if override_facing != 0:
+		sprite.flip_h = override_facing < 0
+	else:
+		sprite.flip_h = facing_direction < 0
+
+
+func _locomotion_texture() -> Texture2D:
+	if not is_on_floor():
+		return JUMP_TEXTURE if velocity.y < -20.0 else FALL_TEXTURE
+	if absf(Input.get_axis("left", "right")) > 0.05:
+		return RUN_TEXTURE
+	return IDLE_TEXTURE
+
+
+## Input, not raw velocity, decides intent here. A stationary shot applies
+## recoil immediately; counting that recoil as movement would show the shoot
+## pose for one frame and then discard it even though the player never ran.
+func _has_stationary_movement_input() -> bool:
+	return is_on_floor() and absf(Input.get_axis("left", "right")) <= 0.05
+
+
+## Unlike the short firing pose, a charge loop should not appear while recoil
+## or another force is still sliding the player across the floor.
+func _can_use_stationary_charge_pose() -> bool:
+	return _has_stationary_movement_input() and absf(velocity.x) <= 20.0
+
 
 func try_to_parry():
 	# IDLE is the only uncommitted state: ATTACK is the shot recovery, PARRY
@@ -600,6 +707,7 @@ func take_damage(amount: int):
 	# A hit can knock the last heart off even mid-recovery, so clamp here and
 	# let die() run rather than bailing out partway through the feedback.
 	hp = max(hp - amount, 0)
+	_hurt_pose_left = 0.16
 	# Being hit interrupts a heal. This is the cost that makes standing still
 	# worth something: the channel is only safe in a gap between shots, so
 	# healing is something you find an opening for rather than mash on.

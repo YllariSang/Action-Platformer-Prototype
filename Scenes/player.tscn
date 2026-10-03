@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://cxpdc72uahs6q" path="res://Scripts/player.gd" id="1_onrkg"]
 [ext_resource type="PackedScene" uid="uid://ipabj7iof7sc" path="res://Scenes/bullet.tscn" id="2_hqtel"]
-[ext_resource type="Texture2D" uid="uid://b36jrcya87ivr" path="res://icon.svg" id="2_i3pqv"]
+[ext_resource type="Texture2D" path="res://Assets/Idle.png" id="2_i3pqv"]
 [ext_resource type="PackedScene" uid="uid://c2blw2s7g5vlk" path="res://Scenes/railgun_bullet.tscn" id="3_fkybt"]
 [ext_resource type="Script" uid="uid://b5nmc6xponcw5" path="res://Scripts/camera.gd" id="4_hqtel"]
 
@@ -58,6 +58,7 @@ size = Vector2(64, 64)
 radius = 55.0
 
 [node name="Player" type="CharacterBody2D" groups=["player"]]
+texture_filter = 1
 script = ExtResource("1_onrkg")
 bullet_scene = ExtResource("2_hqtel")
 railgun_scene = ExtResource("3_fkybt")
@@ -65,17 +66,14 @@ wall_jump_push = 1500.0
 recoil_force = 900.0
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
-scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_i3pqv")
 
 [node name="SparkFire" type="GPUParticles2D" parent="Sprite2D"]
 material = SubResource("CanvasItemMaterial_fkybt")
-scale = Vector2(2, 2)
 amount = 55
 process_material = SubResource("ParticleProcessMaterial_3smsa")
 
 [node name="HealFire" type="GPUParticles2D" parent="Sprite2D"]
-scale = Vector2(2, 2)
 amount = 40
 emitting = false
 one_shot = true
