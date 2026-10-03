@@ -103,6 +103,237 @@ is added, keep it minimal and treat any new sound as a placeholder.
 
 ## Project facts worth knowing
 
+- **The boss re-stages itself between attacks, and that is what `TELEPORT` is
+  for.** `State.TIRED` (the punish window) now resolves to `State.TELEPORT`, not
+  straight back to `State.PATTERN`, giving the beat the header of `boss.gd`
+  describes: attack, punish, reposition, attack. It used to go back to PATTERN
+  every time, so `TELEPORT` was reachable only from the phase-two threshold and
+  the boss held one spot for the entire fight — measured at 0px of movement and
+  0.0 peak velocity across a 20s phase-one fight. That is not "hard", it is
+  *stale*: a fixed origin means every pattern fires from the same point along the
+  same angles forever, so the player memorises one safe column per pattern and
+  then only has to stand still. The bullets were never the problem — an aimed
+  shot hits at every range from 40px to 700px, including pressed against the
+  boss, so do not go looking for a collision bug when a pattern "does not hit".
+  `reposition_between_attacks` is an export because how often a set piece
+  re-stages itself is a design call; turning it off restores the old behaviour.
+- **`_apply_motion()` is a hook with no input, and that is deliberate.** It damps
+  `velocity` toward zero and calls `move_and_slide()` when it is non-zero, but
+  nothing in the project ever writes a non-zero velocity to the boss, so in the
+  current fight it damps zero toward zero and never moves. It exists so a future
+  charge or drift pattern can set `boss.velocity` and inherit the damping. The
+  boss is a floating set piece by design: no gravity, because gravity would fight
+  the teleport and pin the boss to whatever floor it was over. Repositioning is
+  the teleport's job, not motion's.
+- **A teleport target has to be clear of the boss's own body, not just inside the
+  arena rect.** `ArenaBounds.random_point()` takes a `footprint` half-extent and
+  rejects any candidate whose 3x3 sampled box touches a solid on layer 1. The
+  arena rect only knows about the room, and every arena worth fighting in has
+  ledges standing in it, so a point comfortably inside the rect can still be
+  inside a ledge. Measured with a 160x160 boss over 400 random targets: **4% of
+  teleports in the template arena and 11% in the main level landed in solid
+  geometry** before this existed — a boss appearing embedded in a platform about
+  once every twenty attacks. After: 0 in both, with the same query ignoring the
+  footprint still returning 2% and 11% as a control. The boss passes
+  `body_footprint()`, read off its real collision shapes, so resizing it in the
+  inspector cannot silently bring the clipping back.
+- **A bullet must never be born inside a wall.** The sweep's curtain columns are
+  stacked back from the entry edge, and the leading one used to start
+  `column_spacing * 0.5` *outside* the bounds, on the reasoning that a bullet
+  flying in through the wall is a good telegraph. It is — for the trailing
+  columns. The leading one is destroyed by the wall on its first physics frame
+  (`_on_body_entered` sees a `TileMapLayer` and pops it), so a curtain thick
+  enough to put its leading column outside the room fires a burst of explosions
+  against the wall and no curtain at all. Columns now start *inside* the edge,
+  so a thicker curtain gains depth without ever losing its leading edge.
+- **The parry crunch is two stages, not one, and both are in real seconds.**
+  `parry_crunch()` holds `parry_crush_scale` (0.02) for `parry_crush_hold` (0.05s,
+  about three frames — the shortest stop that still reads as a stop) and then
+  `parry_recover_scale` (0.35) for `parry_recover_time` (0.09s). A single hold
+  that snaps to 1.0 reads as a stutter; one long hold reads as the game lagging.
+  The ramp also puts the parry's own follow-through *inside* the frozen window,
+  so the guard dropping, the sparks and the reflect read as one decisive moment
+  rather than three things that happened to coincide. Two rules:
+  - **The timers must pass `ignore_time_scale = true`.** That is the entire
+    trick: 0.05s is 0.05s of wall clock however hard the world is slowed. A
+    scaled timer measures the slowdown instead of the stop.
+  - **The scale is 0.02, not 0.0.** A true zero makes delta-scaled tweens and
+    particles produce NaN, and the difference is not visible.
+  - It goes through `TimeControl.hold()` like every other slow-down, so a parry
+    landing during the boss death cinematic does not cut the cinematic back to
+    full speed early. Verified: a crunch over a `0.5` hold reaches 0.02 and
+    settles back at exactly 0.5.
+- **`main.tscn`'s boss fight happens somewhere its `Arena` does not describe, and
+  that is measured, not assumed.** The arena rect is x 325..1272, y -937..-600.
+  The player spawns at (0, 0) and is **outside** it. The nearest standable
+  surface to the boss at (801, -896) is the ceiling slab at y = -1216, 320px away,
+  with the player hanging 384px *above* the boss's head. The player climbs a
+  route of ledges at y = 32, -208, -384 and never enters the rect. So:
+  - **The sweep cannot hit anything in this level, and that is not a sweep bug.**
+    The curtain's lanes are derived from the arena, and the arena is not where the
+    fight is. It is a correct pattern pointed at the wrong rectangle. Its own
+    `begin()` now pushes a warning naming both the lane span and the player's
+    actual position when nothing comes near, so this class of silence is loud.
+  - **The camera does not claim the arena here.** `_claim_camera()` checks
+    `bounds_node.rect().has_point(player_position())` and leaves the camera on the
+    player when it fails, because framing a rect that contains neither the player
+    nor anything they can stand on plays the fight off the bottom of the screen.
+    In `boss_arena.tscn` the check passes and the camera frames the room as
+    asked.
+  - **The `Arena` node in `main.tscn` is stale and is left alone on purpose.** It
+    is a one-number fix (`position` / `size`) that only the owner can make,
+    because only they know where the fight is meant to happen. Everything that
+    reads it is now guarded, so a wrong rect is a missed opportunity rather than
+    a broken fight.
+  - **Do not rebuild hand-authored level geometry.** An earlier pass read a
+    "topmost solid cell per column" summary as "the level has no floor east of
+    x = 16", erased 1,479 cells, and replaced the platforming with flat
+    `platform.tscn` boxes. The level was not empty and the tilemap is the design.
+    `platform.tscn` is for throwaway rigs, which is what `boss_arena.tscn` is. A
+    single topmost-cell summary cannot tell a floor from a ceiling; dump *every*
+    run per column before concluding anything about a level's shape.
+- **The trigger in `main.tscn` resolves to x -40..5, y -5417..-5199** — a tall
+  thin column far above the ground floor, sitting on the route up to the boss. It
+  is a route trigger, not a doorway. Before concluding a trigger is misplaced,
+  work out what its shape resolves to in world space (position + offset × scale ×
+  size); the authored numbers do not look like a box on the floor and are not
+  meant to be.
+- **The sweep's lanes are anchored to the floor, not divided across the arena.**
+  Lane 0 sits `floor_lane_inset` (34px) above the arena's bottom edge and the rest
+  stack upward at `lane_target` (100px). Dividing the arena's height into equal
+  lanes was the original approach and it is wrong in a way that is invisible from
+  the outside: on a 337px arena it put the lanes at y = -881, -768 and -656 while
+  a player standing on the level's floor occupies y = -64..32, so the nearest lane
+  was **624px away** and the pattern could not hit anyone. Anchoring the lowest
+  lane to the floor fixes it structurally — `_lane_y(0)` is now within 2px of a
+  grounded player in `boss_arena.tscn`.
+  - **The gap may sit on the floor lane.** An earlier version biased it away from
+    the bottom edge on the reasoning that a gap near the floor was uninteresting,
+    which removed the only lane that can reach a grounded player on some room
+    sizes. The gap is a safe column wherever the pattern puts it.
+  - **Test a curtain with two controls in the same trial shape:** the player
+    stands in the gap (must survive) and stands two lanes up with the gap pinned
+    low (must be hit). "The player survived" alone passes for a pattern that
+    fires nothing. Pin `_gap_start` and `_from_left` *every frame* — `_pick_gap()`
+    runs after each curtain, so a gap pinned once is re-randomised by the second
+    one. Give the pattern a long `duration` so it is not retired mid-trial, and
+    clear `is_dead` between trials: 5 HP plus a 1s invulnerability window means
+    several curtains kill the player, and a corpse takes no damage, which reads as
+    "the curtain missed" when it actually landed five times.
+  - `gap_size` is a pixel budget, not a lane count, so the hole stays the same
+    physical size in any room. Two to three player heights is findable and still a
+    commitment.
+- **A bullet's `lifetime` must be set before it enters the tree.**
+  `enemy_bullet._ready()` reads `lifetime` to start its self-destruct timer, so
+  assigning it after `add_child` sets it *after* the 5s default is already
+  committed and the range silently becomes the default. Measured: the shotgun's
+  pellets travelled 778px instead of the ~200px `pellet_lifetime` asks for.
+  `_place_bullet()` now configures speed, lifetime, direction and rotation on the
+  instance and only then adds it, which is the same discipline as measuring the
+  muzzle offset off the instance before placing it.
+- **The camera's zoom is composed from three independent pieces, never assigned.**
+  `_rest_zoom` (authored) × `_frame_zoom` (boss-fight framing) × `_heal_zoom`
+  (heal push-in), summed by `_refresh_zoom_target()`. Writing `_zoom_target`
+  directly from two features is how the heal focus and the fight framing would
+  end up fighting, with whichever ran last winning. `frame_rect()` clamps to
+  never zoom *in* past the authored framing, because a room smaller than the
+  screen should be fully visible with its surroundings still in shot, not blown
+  up to fill the frame. Note `Camera2D.zoom` is a scale where the visible world
+  size is `viewport / zoom`, so fitting a rect means going *down* to
+  `viewport / rect` — the opposite of the instinct.
+- **The boss holds the camera on the arena for the whole fight**
+  (`hold_camera_on_arena`). `_intro()` used to call `return_to_player()` 1.4s in,
+  which framed the fight on wherever the player happened to be standing — and
+  every attack here is an *area* attack, with teleports ranging across the arena
+  and a curtain crossing all of it, so a camera on the player is a camera
+  pointed at a fraction of the threats. `_claim_camera()` takes it in the intro
+  and `_release_camera()` gives it back at the end of the death cinematic, which
+  also clears the framing. Fall back to targeting the boss when there is no
+  arena: framing the boss's own 160x160 box would zoom in on a dot.
+- **The shotgun is a wide close-range cone, not a bullet that expires.**
+  `pellet_lifetime = 0.42` was an attempt to give it range by making its pellets
+  evaporate, and it reads badly: bullets visibly stop dead in mid-air, which looks
+  like a bug rather than a weapon. Prefer expressing a weapon's character in its
+  spread, pellet count and speed, and letting bullets live their normal 5s. It
+  fires 3 blasts of 9 pellets across ~63 degrees, re-aiming on each blast, so
+  standing next to the boss doing nothing is the losing state it punishes. If a
+  range limit is wanted later, make it a much larger `lifetime` and check how it
+  looks, not a value small enough to be seen dying.
+- **The sweep is a left-to-right curtain, and it used to be a wall that could
+  not reach anyone.** It laid columns standing still at the arena's *vertical
+  midpoint* with every bullet travelling `Vector2.UP`. A player on the floor is
+  below that wall and it only moves further away, so the only player it could
+  hit was one who had climbed above mid-height — the last place anyone wants to
+  be. That is why it read as useless rather than merely easy. It is now a
+  full-height curtain that enters from one side and crosses to the other with a
+  contiguous gap left in it, and the side alternates so the player is pinched
+  rather than herded. Three things are load-bearing:
+  - **The gap is what makes it readable.** It is ~2 lanes of ~100px against a
+    64px-tall player, so it can be found and stood in. Verified both ways with
+    the player pinned to one lane and one curtain at a time: 6 damage taken
+    across 3 curtains held in the floor lane with the gap elsewhere, 0 damage
+    held in the gap. Without that control, "the player survived" proves nothing.
+  - **The lanes must reach the floor.** A player standing on the ground has
+    their body between y = -64 and y = 0, so the lowest lane has to sit near
+    -50. A curtain that stops at mid-height is the old bug wearing a new shape,
+    and in `main.tscn` it was literally that: the arena's bottom edge was 600px
+    above the floor. Read the lane layout off the pattern's own `_lanes` /
+    `_spacing` / `_gap` rather than sampling bullets in flight, since half a
+    curtain is still outside the arena a few frames after it fires.
+  - **Columns are stacked back from the entry edge, outside the arena**, so the
+    curtain arrives as a wall and flying in through the wall is the clearest
+    possible telegraph. Do not spread them across the room: they would appear
+    already spread out instead of arriving.
+  - Test a sweep by pinning `sweep_interval` high and holding the player at a
+    fixed y. Also beware that an invulnerable player reads as never hit, since
+    `take_damage` returns early without touching `hp` — count damage, do not
+    watch for a boolean.
+- **The fight is tuned fast on purpose; the numbers are in one place.** Measured
+  before the pass: one attack every 6.8s, 2.7 bullets a second, 400px/s, which
+  is slow enough to memorise an answer rather than read one. After: one attack
+  every 4.0s, ~4.6 bullets a second, ~750px/s. Two numbers are deliberate floors
+  rather than leftovers, so do not "finish" the speedup by cutting them:
+  - **`tired_time` is 1.15s because the player's parry cycle is 1.0s**
+    (`parry_duration + parry_cooldown`). The punish window has to fit a second
+    parry, otherwise a parry that reflects a bullet is followed by no time to
+    spend the Sparks it paid for and the reward disappears.
+  - **`bullet_speed_mult` is 1.45 because the player moves at 300 and dashes at
+    1000.** Faster bullets stop being readable; past this they stop being a
+    dodge test and start being a coin flip. Phase two multiplies by 1.25 on top.
+- **`BossPattern._fire()`'s second argument is a multiplier, and it defaults to
+  1.0 for that reason.** It used to default to `0.0`, which read as
+  "unspecified" and silently meant `bullet.speed * bullet_speed_mult * 0.0` — a
+  stationary bullet. Every pattern that calls `_fire(direction)` was affected, so
+  the spiral, the fan and the volley all dropped their bullets at the boss's feet
+  and they sat there in a slowly growing ring for the full 5s lifetime, looking
+  like decoration and impossible to parry or dodge. Measured: 0px of travel in
+  half a second for those three, against 200px for the sweep, which was fine only
+  because it calls `spawn_bullet_at` directly and never went through `_fire`. The
+  parameter is named `speed_mult` so the multiplication is not a surprise, and
+  `_place_bullet` pushes a warning on a non-positive speed, because a frozen
+  bullet otherwise fails completely silently.
+- **Boss bullets are born outside the boss, and the offset is measured, not
+  guessed.** `spawn_bullet()` places a bullet at `global_position + dir *
+  (muzzle_distance(dir) + shape_reach(bullet, dir))`. It used to place it at
+  `global_position`, which is the middle of a 160x160 collision shape sitting
+  under a 192px sprite: measured, 0px of clearance in every direction against 80px
+  of body and ~96px of sprite, so every shot spent its first fifth of a second
+  travelling under the boss's own sprite and a spiral read as a clump growing out
+  of its chest. Three rules keep it fixed:
+  - **Both shapes are measured, and the bullet is instantiated before it is
+    placed**, because the muzzle has to clear the bullet's radius too. Reaching
+    only as far as the boss's own edge still overlaps.
+  - **The clearance must include the bullet.** An `Area2D` reports a given body
+    exactly once, so a bullet born overlapping its own boss permanently disowns
+    that pair: the player could reflect the shot and it sailed straight back
+    through the boss that fired it, which measured as the boss sitting on
+    500/500. Do not "fix" the visual by offsetting to the boss's edge only.
+  - **`spawn_bullet_at()` is deliberately *not* offset.** The sweep pattern fires
+    a wall across the arena from world points it chose, where the boss has
+    nothing to do with. Offsetting that path would leave a hole at one end of
+    every wall. Rectangles are measured by their support function along `dir`, not
+    by a bounding circle, so a diagonal shot is not pushed out to a corner
+    distance and read as a wider gap than a horizontal one.
 - **A boss is a list of attack patterns, not a state machine.** `boss.gd` knows
   about pacing and nothing about attacks. Every attack is a `BossPattern` scene
   under `Scripts/patterns/` with a `duration`, a `weight`, a `phase`, a `tint`,
@@ -241,6 +472,43 @@ is added, keep it minimal and treat any new sound as a placeholder.
   frame and stacked a popup per physics tick — 45 identical "HP FULL" popups
   over three quarters of a second, measured. The prompt is a reason, not a
   per-frame readout; the key has to be released to ask again.
+- **A heal requires ground, and that is the same rule from the other side.** The
+  channel's entire cost is that it roots the player somewhere they were going to
+  be shot at. `HEALING` already zeroes `velocity.x` and gravity runs regardless,
+  so an airborne channel costs nothing the player still had, and 2 Sparks bought
+  1 HP on the way down past anything — measured, before the guard: a heal
+  started at 4000px up completed for 1 HP and 2 Sparks. In a platformer you are
+  airborne constantly, so allowing it also deleted the "find an opening" decision
+  the mechanic exists for. The `is_on_floor()` guard sits *before* the
+  `current_state != State.IDLE` gate, so pressing `Q` in the air gets a
+  "LAND FIRST" reason rather than silence, and it latches like the other two
+  refusals so a held key prints it once.
+- **The dash has a cooldown, and `can_dash` is only ever handed back through
+  `refresh_dash_charge()`.** There are three places that used to write
+  `can_dash = true` (floor contact, wall slide, wall jump) and all three now call
+  the helper, which refuses while `_dash_cooldown_left > 0` and while the state is
+  already `DASH`. Both halves are load-bearing, and the second one is not
+  obvious: **a ground dash never leaves the floor**, because `DASH` skips gravity
+  and zeroes `velocity.y`, so `is_on_floor()` stays true for the whole 0.2s.
+  Re-granting on contact therefore un-spent the dash mid-flight, and since the
+  press is read as `is_action_just_pressed` a player leaning on the key could
+  restart the dash forever without ever leaving the ground — measured at 1517px
+  of travel in 1.5s of mashing, against 600px (three dashes) with the cooldown.
+  Do not reinstate a bare `can_dash = true`. Counting entries into `State.DASH`
+  cannot detect this bug, because a restart never leaves the state; measure
+  distance travelled instead.
+- **`dash_cooldown` runs from the start of the dash, not the end.** The dash
+  itself lasts `DashTimer`'s 0.2s, so the gap the player actually feels is
+  `dash_cooldown - 0.2`. It is a plain countdown in `_physics_process` rather
+  than a `Timer` node because it gates one boolean and has to be readable
+  synchronously by the contact check in the same function. The air dash is
+  untouched: one per fall, plus one per wall contact, both now rate-limited.
+- **`parry_box.monitoring` / `monitorable` are set with `set_deferred()` in
+  `die()`.** A lethal bullet hit arrives inside `enemy_bullet.gd`'s
+  `_on_body_entered`, and Godot refuses to change an area's monitoring state
+  from inside a physics signal callback. Assigning directly raised "Function
+  blocked during in/out signal" on every death and left the box monitorable.
+  Same reason a successful parry drops the box deferred.
 - **A hold repeats a completed heal.** Finishing a channel does not set
   `_heal_locked`, so keeping `Q` down starts the next one. That is intentional —
   the 0.6s commitment is the cost, not the first press — but it means the HUD
