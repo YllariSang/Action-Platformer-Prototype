@@ -4,12 +4,15 @@
 
 [node name="Spread" type="Node2D"]
 script = ExtResource("1_spread")
-duration = 2.0
+duration = 1.2
 weight = 1.0
 tint = Color(1, 0.6, 0.2, 1)
+preferred_min_distance = 220.0
+preferred_max_distance = 850.0
+outside_range_weight = 0.4
 shots = 5
-spread = 0.2
-wind_up = 0.45
-volley_interval = 0.0
-max_volleys = 1
-phase_two_spread = 0.12
+spread = 0.3
+wind_up = 0.25
+volley_interval = 0.35
+max_volleys = 2
+phase_two_spread = 0.18

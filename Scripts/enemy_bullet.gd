@@ -7,9 +7,16 @@ var damage = 1
 var direction = Vector2.RIGHT
 var is_reflected = false 
 
+## Seconds before this bullet gives up and frees itself.
+##
+## Exported rather than hardcoded because range is a weapon property. Boss
+## patterns currently keep the readable five-second default; a future pattern
+## may override it, but must do so before the bullet enters the tree.
+@export var lifetime: float = 5.0
+
 func _ready():
 	add_to_group("enemy")
-	await get_tree().create_timer(5.0).timeout
+	await get_tree().create_timer(lifetime).timeout
 	queue_free()
 
 func _physics_process(delta):
@@ -42,8 +49,10 @@ func _on_body_entered(body):
 			queue_free()
 		return
 
-	# Hitting Walls
-	if body is TileMapLayer:
+	# Hitting level geometry. Production levels use TileMapLayer; the reusable
+	# boss arena and test lab deliberately use StaticBody2D platform rigs. Treat
+	# both as walls so cover and arena boundaries behave the same in either scene.
+	if body is TileMapLayer or body is StaticBody2D:
 		spawn_pop()
 		queue_free()
 

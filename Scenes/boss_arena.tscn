@@ -24,7 +24,7 @@ size = Vector2(1400, 700)
 position = Vector2(-540, 0)
 
 [node name="Boss" parent="." instance=ExtResource("2_boss")]
-position = Vector2(0, -700)
+position = Vector2(0, -520)
 
 [node name="BossTrigger" type="Area2D" parent="." node_paths=PackedStringArray("boss_node")]
 position = Vector2(-330, -130)

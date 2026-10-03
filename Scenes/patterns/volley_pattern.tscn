@@ -4,11 +4,13 @@
 
 [node name="Volley" type="Node2D"]
 script = ExtResource("1_volley")
-duration = 4.0
+duration = 2.2
 weight = 1.2
 tint = Color(1, 0.2, 0.2, 1)
-shot_interval = 0.85
-phase_two_shot_interval = 0.55
-lead_in = 0.6
+shot_interval = 0.5
+phase_two_shot_interval = 0.3
+lead_in = 0.28
 shots = 1
 spread = 0.12
+max_volleys = 4
+phase_two_max_volleys = 6

@@ -4,13 +4,18 @@
 
 [node name="Sweep" type="Node2D"]
 script = ExtResource("1_sweep")
-duration = 4.5
+duration = 3.0
 weight = 0.9
 tint = Color(0.4, 0.8, 1, 1)
-columns = 16
-gap_width = 2
-sweep_interval = 1.4
-wind_up = 0.6
-hint_time = 0.45
-rows = 1
-phase_two_gap_width = 1
+requires_player_in_arena = true
+lane_target = 100.0
+gap_size = 200.0
+thickness = 2
+column_spacing = 55.0
+sweep_interval = 0.9
+wind_up = 0.3
+travel_speed_mult = 1.5
+alternate_sides = true
+phase_two_gap_size = 110.0
+max_curtains = 3
+phase_two_max_curtains = 4

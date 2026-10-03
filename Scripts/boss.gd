@@ -32,7 +32,13 @@ enum State { INACTIVE, INTRO, IDLE, PATTERN, TIRED, TELEPORT, DYING }
 @export var bullet_scene: PackedScene
 ## Bullets are spawned at the boss and driven by their own script. This scales
 ## every pattern's bullets at once, which is the phase-two lever.
-@export var bullet_speed_mult: float = 1.0
+##
+## Above 1.0 because the fight was measured at one attack every 6.8s and 2.7
+## bullets a second at 400px/s, which is slow enough that the player has time to
+## memorise an answer rather than read one. The ceiling is the player's own
+## reflexes: they move at 300 and dash at 1000, so 580px/s is fast to react to
+## and still slower than a committed dodge.
+@export var bullet_speed_mult: float = 1.45
 
 @export_category("Patterns")
 ## The pool this boss draws from. Order does not matter; weight and phase do.
@@ -40,18 +46,40 @@ enum State { INACTIVE, INTRO, IDLE, PATTERN, TIRED, TELEPORT, DYING }
 
 @export_category("Pacing")
 ## Seconds of breathing room before the first attack of a cycle. Short enough
-## that the fight starts, long enough to read the intro.
-@export var idle_time: float = 0.9
+## that the fight starts, long enough to read the intro. Kept well under the
+## player's 0.8s parry cooldown, because the gap before an attack is the window
+## in which a parry actually lands.
+@export var idle_time: float = 0.35
 ## Punish window after every attack. This is the player's reward for surviving
 ## a pattern, and the main thing to tune if the fight feels unfair — a parry
 ## that lands here is a parry that buys something.
-@export var tired_time: float = 1.8
-## Fade the boss out and back in when repositioning.
-@export var teleport_out: float = 0.3
-@export var teleport_in: float = 0.3
+##
+## Cut from 1.8s, but not further: this has to stay longer than a parry cooldown
+## so that a parry which reflects a bullet is followed by the time to use the
+## Sparks it paid for. Halving it made the fight quick and took the reward with
+## it.
+@export var tired_time: float = 1.15
+## Blink to a new spot at the end of every punish window, so each attack arrives
+## from a different angle. Turning it off restores the older behaviour: the boss
+## holds its ground for the entire fight and only blinks when it enrages, which
+## lets the player memorise one safe spot per pattern and then simply stand
+## there. It is an export because "how often should a set piece re-stage itself"
+## is a design call, not a bug fix.
+@export var reposition_between_attacks: bool = true
+## Fade the boss out and back in when repositioning. Short, because with a
+## reposition between every attack this happens several times a fight and a long
+## fade turns the loop into waiting.
+@export var teleport_out: float = 0.18
+@export var teleport_in: float = 0.18
 ## Never place the boss closer than this to the player, so a reposition is never
 ## an instant hit.
 @export var teleport_clearance: float = 260.0
+## Hold the camera on the arena for the whole fight instead of following the
+## player. This was requested, and it is a real improvement for a fight played
+## inside a box, but **it is off by default in `main.tscn`'s boss room** because
+## of what was measured about that room (see the note on `_claim_camera`).
+## Leave this on for a self-contained arena like `boss_arena.tscn`.
+@export var hold_camera_on_arena: bool = true
 
 @export_category("Phase Two")
 ## Fraction of max_hp at which the boss enrages. 0.5 means halfway.
@@ -146,6 +174,10 @@ func _read_pattern_pool() -> void:
 			"phase": probe.phase,
 			"duration": probe.duration,
 			"tint": probe.tint,
+			"preferred_min_distance": maxf(0.0, probe.preferred_min_distance),
+			"preferred_max_distance": maxf(0.0, probe.preferred_max_distance),
+			"outside_range_weight": clampf(probe.outside_range_weight, 0.0, 1.0),
+			"requires_player_in_arena": probe.requires_player_in_arena,
 		})
 		probe.free()
 
@@ -157,34 +189,47 @@ func _read_pattern_pool() -> void:
 ## nothing to pick. A pool of one should fire that one forever, not stall the
 ## fight waiting for an option that does not exist.
 func _pick_pattern() -> PackedScene:
-	var candidates: Array[Dictionary] = []
-	var unique: Array[Dictionary] = []
+	var eligible: Array[Dictionary] = []
+	var player_distance := global_position.distance_to(player_position())
+	var player_in_arena := bounds_node != null and bounds_node.rect().grow(1.0).has_point(player_position())
 	for entry in _pool:
 		if int(entry["phase"]) > _phase:
 			continue
-		if entry["scene"] == _last_pattern_scene:
+		if bool(entry["requires_player_in_arena"]) and not player_in_arena:
 			continue
-		unique.append(entry)
-		candidates.append(entry)
+		var effective_weight := float(entry["weight"])
+		var below_range := player_distance < float(entry["preferred_min_distance"])
+		var max_distance := float(entry["preferred_max_distance"])
+		var above_range := max_distance > 0.0 and player_distance > max_distance
+		if below_range or above_range:
+			effective_weight *= float(entry["outside_range_weight"])
+		if effective_weight <= 0.0:
+			continue
+		eligible.append({"entry": entry, "weight": effective_weight})
 
-	if candidates.is_empty():
-		candidates = unique
-	if candidates.is_empty():
-		# Every pattern is phase 2 and the boss has not enraged yet. Use the
-		# whole pool rather than standing still.
-		candidates = _pool
-	if candidates.is_empty():
+	if eligible.is_empty():
+		push_warning("Boss: no valid attack pattern for phase %d and the player's current position." % _phase)
 		return null
 
+	var candidates: Array[Dictionary] = []
+	for option in eligible:
+		if option["entry"]["scene"] != _last_pattern_scene:
+			candidates.append(option)
+	# A one-pattern pool may repeat. Importantly, this falls back only to
+	# phase/context-eligible patterns; it can never leak a phase-two attack into
+	# phase one just because the only phase-one attack was used last.
+	if candidates.is_empty():
+		candidates = eligible
+
 	var total := 0.0
-	for entry in candidates:
-		total += float(entry["weight"])
+	for option in candidates:
+		total += float(option["weight"])
 	var roll := randf() * total
-	for entry in candidates:
-		roll -= float(entry["weight"])
+	for option in candidates:
+		roll -= float(option["weight"])
 		if roll <= 0.0:
-			return entry["scene"]
-	return candidates[candidates.size() - 1]["scene"]
+			return option["entry"]["scene"]
+	return candidates[candidates.size() - 1]["entry"]["scene"]
 
 
 func _spawn_pattern(scene: PackedScene) -> void:
@@ -221,10 +266,24 @@ func _physics_process(delta: float) -> void:
 	match current_state:
 		State.PATTERN:
 			_tick_pattern(delta)
-		State.IDLE, State.TIRED:
+		State.IDLE:
 			_state_time -= delta
 			if _state_time <= 0.0:
 				_set_state(State.PATTERN)
+		State.TIRED:
+			_state_time -= delta
+			if _state_time <= 0.0:
+				# The punish window ends on a reposition, not straight back into the
+				# next attack. That is the beat this file's header describes —
+				# attack, punish, reposition, attack — and it is the whole difference
+				# between a fight and a target. With a fixed origin every pattern
+				# fires from the same point along the same angles forever, so the
+				# player learns one safe column per pattern and then only has to
+				# stand still: measured, 0px of movement and 0.0 peak velocity
+				# across a 20s phase-one fight. The bullets are not the problem —
+				# an aimed shot hits at every range from 40px to 700px, including
+				# pressed right up against the boss.
+				_set_state(State.TELEPORT if reposition_between_attacks else State.PATTERN)
 		_:
 			# INACTIVE, INTRO, TELEPORT and DYING are all driven by awaits and
 			# tweens inside _set_state(), so there is deliberately nothing to tick
@@ -251,6 +310,8 @@ func _tick_pattern(delta: float) -> void:
 	_pattern.tick(delta)
 	_apply_motion(delta)
 	if _pattern.finished:
+		_stop_pattern()
+		_set_state(State.TIRED)
 		return
 	if _pattern.duration > 0.0 and _pattern.elapsed >= _pattern.duration:
 		_stop_pattern()
@@ -295,6 +356,7 @@ func _set_state(new_state: State) -> void:
 				# The pattern's own tint wins, so the player can read the attack
 				# from the boss before the first bullet exists.
 				_apply_tint(_pattern.tint)
+				_telegraph_attack()
 			else:
 				_set_state(State.TIRED)
 		State.TIRED:
@@ -318,17 +380,67 @@ func start_fight() -> void:
 # --- INTRO / TELEPORT ---
 
 func _intro() -> void:
-	get_tree().call_group("camera", "change_target", self)
+	_claim_camera()
 	await get_tree().create_timer(1.4).timeout
 	if current_state == State.DYING: return
 	if name_label != null:
 		name_label.visible = true
-	get_tree().call_group("camera", "return_to_player")
 	_set_state(State.IDLE)
 
 
+## Take the camera for the whole fight, and frame the room on it.
+##
+## The camera used to be handed back to the player 1.4s into the intro, which
+## meant the framing during an actual fight was whatever the player happened to
+## be standing under. For a fight played inside a closed box that is the wrong
+## camera: the boss teleports anywhere inside the arena and the sweep curtain
+## crosses all of it, so a camera locked to the player is looking at a fraction
+## of the threats.
+##
+## **But only if the fight is actually inside the box.** Measured on
+## `main.tscn`: the arena rect is x 325..1272, y -937..-600, and the nearest
+## standable surface to the boss is the ceiling slab at y = -1216 — 320px away,
+## with the player hanging 384px *above* the boss's head. The player never
+## enters the rect at all; they climb a route on ledges outside it. Framing that
+## rect during a fight would centre the camera on a region of level that
+## contains neither the player nor anything they can stand on, so the fight would
+## be played off the bottom of the screen.
+##
+## So this only claims the camera when the arena actually contains the player. If
+## it does not, the fight is happening somewhere the arena does not describe, and
+## following the player is the lesser evil. `hold_camera_on_arena` stays the
+## master switch; this is a second, measured guard behind it.
+func _claim_camera() -> void:
+	if not hold_camera_on_arena:
+		return
+	# No arena, or the arena is not where the player is: leave the camera alone.
+	if bounds_node == null or not bounds_node.rect().has_point(player_position()):
+		return
+	var target: Node2D = bounds_node
+	for cam in get_tree().get_nodes_in_group("camera"):
+		if cam.has_method("change_target"):
+			cam.change_target(target)
+		# Only frame when there is an arena: framing the boss's own 160x160 box
+		# would zoom in on a dot.
+		if cam.has_method("frame_rect"):
+			cam.frame_rect(bounds_node.rect())
+
+
+## Hand the camera back once the fight is over and there is nothing left to
+## watch. Called at the end of the death cinematic, so a boss fight that ends
+## does not leave the camera parked on an empty room if the player walks on.
+func _release_camera() -> void:
+	for cam in get_tree().get_nodes_in_group("camera"):
+		if cam.has_method("return_to_player"):
+			cam.return_to_player()
+		if cam.has_method("clear_frame"):
+			cam.clear_frame()
+
+
 func _teleport() -> void:
-	_destination = bounds_node.random_point(player_position(), teleport_clearance) \
+	# The boss's own footprint goes with the request, so a target that would bury
+	# it in a ledge is rejected. See ArenaBounds.random_point() for the numbers.
+	_destination = bounds_node.random_point(player_position(), teleport_clearance, body_footprint()) \
 		if bounds_node != null else global_position
 	var tween := create_tween()
 	tween.tween_property(sprite, "modulate:a", 0.0, teleport_out)
@@ -355,25 +467,161 @@ func _apply_tint(tint: Color) -> void:
 	SpriteFeedback.set_tint(sprite, tint)
 
 
+## Every attack starts with the same short visual grammar: tint identifies the
+## pattern, white flash says "read now". The pattern's own wind-up still owns
+## the actual reaction time.
+func _telegraph_attack() -> void:
+	SpriteFeedback.flash(sprite, Color.WHITE, 0.7, 0.12)
+
+
+## Called once per volley/curtain, not once per bullet, so dense attacks feel
+## decisive without turning the boss into a permanent white strobe.
+func attack_pulse(strength: float = 0.3) -> void:
+	if current_state != State.PATTERN or sprite.modulate.a <= 0.5:
+		return
+	SpriteFeedback.flash(sprite, Color.WHITE, clampf(strength, 0.0, 1.0), 0.06)
+	get_tree().call_group("camera", "add_shake", strength * 0.08)
+
+
 # --- BULLETS ---
 
 ## The one place a pattern's bullet is created. Patterns call this rather than
 ## instantiating bullets themselves so the parenting, the shake, and the phase
 ## speed multiplier stay in one place.
-func spawn_bullet(direction: Vector2, speed_mult: float = 1.0) -> void:
-	spawn_bullet_at(global_position, direction, speed_mult)
-
-
-func spawn_bullet_at(at: Vector2, direction: Vector2, speed_mult: float = 1.0) -> void:
-	if bullet_scene == null or direction == Vector2.ZERO:
+##
+## This one clears the boss's own body; spawn_bullet_at() deliberately does not.
+## Bullets used to be born at `global_position`, which is the middle of a 160x160
+## collision shape sitting under a 192px sprite, so every shot started inside the
+## boss and spent the first fifth of a second travelling under its own sprite.
+## Measured, before the fix: 0px of clearance in every direction, against 80px
+## of body and ~96px of sprite. A spiral volley read as a clump growing out of
+## the boss's chest rather than shots leaving it.
+func spawn_bullet(direction: Vector2, speed_mult: float = 1.0, lifetime: float = 0.0, scene_override: PackedScene = null) -> void:
+	var source := scene_override if scene_override != null else bullet_scene
+	if source == null:
 		return
-	var b := bullet_scene.instantiate()
-	get_parent().add_child(b)
-	b.global_position = at
-	b.direction = direction.normalized()
-	b.rotation = b.direction.angle()
+	var dir := direction.normalized()
+	if dir == Vector2.ZERO:
+		return
+	# Instantiate before placing, because the muzzle has to clear the bullet's own
+	# shape as well as the boss's. An Area2D reports a given body exactly once, so
+	# a bullet born overlapping its own boss permanently disowns that pair: the
+	# player could reflect the shot and it would sail straight back through the
+	# boss that fired it, taking no damage. Measured, before the fix: a reflected
+	# bullet passing back through the boss left it on 500/500.
+	var b := source.instantiate()
+	var at := global_position + dir * (muzzle_distance(dir) + shape_reach(b, dir))
+	_place_bullet(b, at, dir, speed_mult, lifetime)
+
+
+## Fire from a world point the pattern chose, rather than from the boss. The
+## sweep pattern lays a wall across the arena with this, so the spawn point is
+## already somewhere the boss has nothing to do with and no muzzle offset is
+## wanted. See spawn_bullet() for the offset that the other path needs.
+func spawn_bullet_at(at: Vector2, direction: Vector2, speed_mult: float = 1.0, lifetime: float = 0.0, scene_override: PackedScene = null) -> void:
+	var source := scene_override if scene_override != null else bullet_scene
+	if source == null:
+		return
+	var dir := direction.normalized()
+	if dir == Vector2.ZERO:
+		return
+	_place_bullet(source.instantiate(), at, dir, speed_mult, lifetime)
+
+
+## Half-extent of this boss's own collision shape, for anything that needs to
+## keep clear of it. Read off the real shapes rather than assumed, for the same
+## reason `muzzle_distance()` reads them instead of hardcoding 80: a boss resized
+## in the inspector must not silently start clipping again.
+func body_footprint() -> Vector2:
+	var half := Vector2.ZERO
+	for child in get_children():
+		var collider := child as CollisionShape2D
+		if collider == null or collider.shape == null:
+			continue
+		var rect := collider.shape as RectangleShape2D
+		if rect != null:
+			half = half.max(rect.size * 0.5)
+			continue
+		var circle := collider.shape as CircleShape2D
+		if circle != null:
+			half = half.max(Vector2(circle.radius, circle.radius))
+	return half
+
+
+## The one place a spawned bullet is parented, placed, and configured, so the
+## speed multiplier and the rotation cannot drift between the two spawn paths.
+##
+## `lifetime` of zero or less means "leave the bullet's own alone": the default
+## is the bullet scene's business, not something every caller should restate.
+## The hook remains available for a future weapon whose range genuinely needs
+## it, and must be applied here before `_ready()` starts the bullet's timer.
+func _place_bullet(b: Area2D, at: Vector2, dir: Vector2, speed_mult: float, lifetime: float = 0.0) -> void:
+	# Configured BEFORE the bullet enters the tree. `enemy_bullet._ready()` reads
+	# `lifetime` to start its self-destruct timer, so setting it after add_child is
+	# setting it after the 5s default has already been committed: the shotgun's
+	# pellets measured 778px of travel instead of the ~200px its range calls for,
+	# because the range was silently the default. Same shape of mistake as the
+	# muzzle offset, which is why both are read off the instance before placing it.
 	if "speed" in b:
 		b.speed = b.speed * bullet_speed_mult * speed_mult
+		# A bullet that cannot move is never what anyone meant, and it fails
+		# silently: it sits where it was born looking like a decoration until it
+		# ages out. Warn rather than clamp, because a clamped 0 would hide the
+		# mistake behind plausible-looking motion, and because a warning makes the
+		# required `godot --headless --quit-after 300` run fail loudly.
+		if b.speed <= 0.0:
+			push_warning("Boss: spawned a bullet with speed %.2f. Check the pattern's speed multiplier." % b.speed)
+	if lifetime > 0.0 and "lifetime" in b:
+		b.lifetime = lifetime
+	b.direction = dir
+	b.rotation = dir.angle()
+	get_parent().add_child(b)
+	b.global_position = at
+
+
+## Extra clearance past the boss's own collision shape before a bullet is allowed
+## to exist, so it does not begin life flush against the body it came from. A
+## couple of pixels is enough: the bullet's own radius is already added on top by
+## the caller.
+@export var muzzle_margin: float = 4.0
+
+
+## How far along `direction` the boss's collision shapes reach from its centre.
+##
+## The largest of its own shapes, not a hardcoded number, so a boss that is
+## resized in the inspector or given a second hitbox does not silently go back to
+## firing from inside itself. A rectangle is measured by its support function in
+## that direction rather than by its bounding circle, or a diagonal shot from a
+## 160x160 square would be pushed out to a corner distance of 113px and read as
+## a wider gap to the player than a horizontal one.
+func muzzle_distance(direction: Vector2) -> float:
+	return shape_reach(self, direction) + muzzle_margin
+
+
+## Distance from `node`'s origin to the outside of its largest collision shape,
+## measured along `dir`. Works on any node with CollisionShape2D children, which
+## is how the same routine measures both the boss and an unscripted bullet.
+func shape_reach(node: Node, dir: Vector2) -> float:
+	var reach := 0.0
+	for child in node.get_children():
+		var collider := child as CollisionShape2D
+		if collider == null or collider.shape == null:
+			continue
+		var rect := collider.shape as RectangleShape2D
+		if rect != null:
+			var half := rect.size * 0.5
+			reach = maxf(reach, absf(dir.x) * half.x + absf(dir.y) * half.y)
+			continue
+		var circle := collider.shape as CircleShape2D
+		if circle != null:
+			reach = maxf(reach, circle.radius)
+			continue
+		var capsule := collider.shape as CapsuleShape2D
+		if capsule != null:
+			# Only the caps stick out sideways; the flat side is the height.
+			var straight := maxf(capsule.height * 0.5 - capsule.radius, 0.0)
+			reach = maxf(reach, capsule.radius + absf(dir.y) * straight)
+	return reach
 
 
 # --- HELPERS FOR PATTERNS ---
@@ -475,8 +723,9 @@ func _death_cinematic() -> void:
 		result_screen.show_result(true)
 
 	# Hand the camera back BEFORE freeing, or it follows a freed node for the
-	# rest of the frame.
-	get_tree().call_group("camera", "return_to_player")
+	# rest of the frame. This clears the fight framing as well as the target, so
+	# a fight that ended does not leave the camera parked on an empty room.
+	_release_camera()
 	queue_free()
 
 

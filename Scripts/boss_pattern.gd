@@ -38,9 +38,26 @@ extends Node2D
 ## before it arrives. Kept in 0..1 for the same reason the entity tints are.
 @export var tint: Color = Color(1, 1, 1)
 
+## Selection preferences. These do not hard-code attacks into the boss: they
+## let each pattern describe the situation where it is most interesting. A
+## shotgun should be common up close, for example, without disappearing from
+## the fight completely when the player backs away.
+@export_group("Selection")
+@export var preferred_min_distance: float = 0.0
+## Zero or less means there is no upper preference.
+@export var preferred_max_distance: float = 0.0
+## Weight multiplier outside the preferred distance band. Keep this above zero
+## when the attack is still valid there, just less interesting.
+@export_range(0.0, 1.0, 0.05) var outside_range_weight: float = 1.0
+## Arena-shaped attacks are invalid when the player is not actually in the
+## arena. This is principally for Sweep, and prevents a stale Arena node from
+## producing a perfectly functional attack in the wrong part of the level.
+@export var requires_player_in_arena: bool = false
+
 ## The bullet this pattern fires. Left empty on the pattern and inherited from
 ## the boss when unset, so a whole boss shares one bullet scene by default and
 ## only a pattern that genuinely needs something different overrides it.
+@export_group("")
 @export var bullet_scene: PackedScene
 
 ## The owning boss, set by `begin`.
@@ -60,6 +77,8 @@ var elapsed: float = 0.0
 ## Called once, the moment the pattern is put to work.
 func begin(owning_boss: Boss) -> void:
 	boss = owning_boss
+	finished = false
+	elapsed = 0.0
 
 
 ## Called once per physics frame while the pattern is active.
@@ -71,6 +90,13 @@ func tick(delta: float) -> void:
 ## phase change, or the boss died. Anything the pattern started and the boss
 ## will not clean up belongs here.
 func end() -> void:
+	finished = true
+
+
+## Ask the boss to advance as soon as the designed attack has been emitted.
+## `end()` is cleanup; patterns should call this instead so the boss remains the
+## sole owner of the lifecycle transition.
+func finish() -> void:
 	finished = true
 
 
@@ -88,9 +114,27 @@ func _bullet_scene() -> PackedScene:
 ## Fire through the boss, so every pattern shares one spawn path and the
 ## camera-shake and parenting conventions live in one place instead of being
 ## copied into each attack.
-func _fire(direction: Vector2, speed: float = 0.0) -> void:
+##
+## `speed_mult` is a multiplier on the bullet's own speed, so the default is 1.0
+## and it must never be 0. It used to default to 0.0, which read as "unspecified"
+## and meant every pattern that called `_fire(direction)` got `speed * 1.0 * 0.0`
+## — a stationary bullet. The result was not subtle and not new: the spiral, the
+## fan and the volley dropped their bullets at the boss's feet and they sat there
+## in a slowly growing ring for the full 5s lifetime while the player could not
+## parry or dodge any of it. The sweep pattern was unaffected because it calls
+## `spawn_bullet_at` directly. Measured: 0px of travel in half a second for the
+## first three, against 200px for the sweep.
+func _fire(direction: Vector2, speed_mult: float = 1.0) -> void:
 	if boss != null:
-		boss.spawn_bullet(direction.normalized(), speed)
+		boss.spawn_bullet(direction.normalized(), speed_mult, 0.0, _bullet_scene())
+
+
+## Small shared punctuation for a firing beat. It uses the feedback shader, so
+## it composes with the attack tint and remains safe when placeholder art is
+## replaced.
+func _attack_pulse(strength: float = 0.3) -> void:
+	if boss != null:
+		boss.attack_pulse(strength)
 
 
 ## A unit vector at `angle` radians, so patterns can think in angles without

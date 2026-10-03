@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://Scripts/boss.gd" id="1_boss"]
 [ext_resource type="Texture2D" path="res://icon.svg" id="2_icon"]
@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://Scenes/patterns/spread_pattern.tscn" id="5_spread"]
 [ext_resource type="PackedScene" path="res://Scenes/patterns/volley_pattern.tscn" id="6_volley"]
 [ext_resource type="PackedScene" path="res://Scenes/patterns/sweep_pattern.tscn" id="7_sweep"]
+[ext_resource type="PackedScene" path="res://Scenes/patterns/shotgun_pattern.tscn" id="8_shotgun"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_boss"]
 size = Vector2(160, 160)
@@ -29,7 +30,7 @@ script = ExtResource("1_boss")
 max_hp = 500
 display_name = "BOSS"
 bullet_scene = ExtResource("3_bullet")
-pattern_scenes = [ExtResource("4_spiral"), ExtResource("5_spread"), ExtResource("6_volley"), ExtResource("7_sweep")]
+pattern_scenes = [ExtResource("4_spiral"), ExtResource("5_spread"), ExtResource("6_volley"), ExtResource("7_sweep"), ExtResource("8_shotgun")]
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 scale = Vector2(1.5, 1.5)

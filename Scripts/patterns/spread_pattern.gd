@@ -45,7 +45,11 @@ func tick(delta: float) -> void:
 	while elapsed >= _next_volley:
 		_emit_volley()
 		_volleys_fired += 1
+		if _volleys_fired >= max_volleys:
+			finish()
+			return
 		if volley_interval <= 0.0:
+			finish()
 			return
 		_next_volley += volley_interval
 
@@ -53,6 +57,7 @@ func tick(delta: float) -> void:
 func _emit_volley() -> void:
 	if _bullet_scene() == null:
 		return
+	_attack_pulse(0.38)
 	# Re-aim per volley, not once at begin(): that is the whole reason this
 	# pattern is a dodge test rather than a static cone.
 	var aim := _angle_to_player()
