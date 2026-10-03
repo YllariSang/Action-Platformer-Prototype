@@ -10,6 +10,23 @@ extends CharacterBody2D
 @export var parry_cooldown: float = 0.8 
 @export var parry_success_cooldown: float = 0.1 
 
+@export_category("Parry Crunch")
+## How slow the world goes on the frame a parry connects. Near zero rather than
+## zero: a true 0.0 makes tweens and particles that scale with delta produce NaN,
+## and this is not worth the risk for a difference nobody can see.
+@export var parry_crush_scale: float = 0.02
+## Real seconds held at `parry_crush_scale`. Around three frames at 60Hz, which
+## is the shortest stop that still reads as a stop. Longer and the game feels
+## like it dropped a frame; shorter and the parry is just another bullet deflected.
+@export var parry_crush_hold: float = 0.05
+## Scale for the ramp back to normal. Deliberately not 1.0: this is a recovery
+## tail, not a second freeze.
+@export var parry_recover_scale: float = 0.35
+## Real seconds of that ramp. Longer than the hold on purpose — the world eases
+## back rather than snapping — but short enough that a second parry can still
+## stack its own crunch on top through TimeControl.
+@export var parry_recover_time: float = 0.09
+
 @export_category("Health")
 @export var max_hp: int = 5
 ## Health does not regenerate on its own. Sparks are the only way back.
@@ -514,7 +531,11 @@ func _on_parry_box_area_entered(area: Area2D) -> void:
 		spark_fire.restart() 
 		SpriteFeedback.flash(sprite, Color(0, 1, 1), 1.0, 0.12) # Cyan parry spark
 		shake_ui()
-		frame_freeze(0.1, 0.05)
+		# The crunch. A parry that lands at full frame rate barely registers as
+		# an event: the world does not stop, so the player's own guard coming
+		# down and the reflect firing read as the same continuous motion as
+		# everything around them. The near-total stop is what makes it land.
+		parry_crunch()
 		
 		# Handle the enemy reaction
 		if area.has_method("get_parried"):
@@ -917,6 +938,33 @@ func frame_freeze(time_scale, duration):
 	# ignore_time_scale = true so `duration` is real seconds, not scaled ones.
 	await get_tree().create_timer(duration, true, false, true).timeout
 	TimeControl.release(token)
+
+
+## The parry crunch: a hard stop on the frame the parry connects, then a faster
+## recovery back to full speed.
+##
+## Two stages rather than one, because a single hold that snaps straight back to
+## 1.0 reads as a stutter and a long one reads as the game lagging. The first
+## stage is near-frozen for a handful of frames, which is the part the player
+## feels as impact; the second hands the world back over a slightly longer tail
+## so the return is a ramp the eye can follow instead of a jump cut. It also
+## means the parry's own follow-through — the guard dropping, the sparks, the
+## reflected bullet reversing — happens *inside* the frozen window, which is why
+## the parry reads as a single decisive moment rather than three things that
+## happened to coincide.
+##
+## These are seconds of real time, not scaled: the timers pass
+## `ignore_time_scale`, so a 0.05s stop is 0.05s of wall clock however hard the
+## world is being slowed. That is the whole trick, and it is why this cannot be
+## done by setting `Engine.time_scale` and waiting out a scaled timer.
+func parry_crunch() -> void:
+	var stop = TimeControl.hold(parry_crush_scale)
+	await get_tree().create_timer(parry_crush_hold, true, false, true).timeout
+	TimeControl.release(stop)
+
+	var tail = TimeControl.hold(parry_recover_scale)
+	await get_tree().create_timer(parry_recover_time, true, false, true).timeout
+	TimeControl.release(tail)
 
 func spawn_popup(text, color):
 	var popup = popup_scene.instantiate()
