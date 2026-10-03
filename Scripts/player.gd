@@ -31,6 +31,10 @@ extends CharacterBody2D
 @export var jump_force: float = -600.0
 @export var gravity: float = 1500.0
 @export var dash_speed: float = 1000.0
+## Seconds before the dash is handed back, counted from the moment it starts.
+## The dash itself only lasts DashTimer's 0.2s, so this is the gap that decides
+## how often the player can actually cross a gap or close on a flier.
+@export var dash_cooldown: float = 0.6
 @export var max_jumps: int = 2
 @export var wall_jump_push: float = 500.0
 @export var wall_slide_speed: float = 100.0
@@ -61,6 +65,12 @@ var can_parry: bool = true
 var jump_count: int = 0
 var can_dash: bool = true
 var coyote_timer: float = 0.0 
+
+## Time left on the dash cooldown. Counted down in _physics_process alongside
+## coyote_timer and invuln_timer rather than on a Timer node, because it gates a
+## single boolean and has to be readable synchronously by the ground contact
+## check in the same function.
+var _dash_cooldown_left: float = 0.0
 
 # Health
 var hp: int = 5
@@ -192,17 +202,19 @@ func _physics_process(delta: float) -> void:
 	velocity.x -= recoil_applied_x
 	recoil_applied_x = 0.0
 	
+	_dash_cooldown_left = maxf(0.0, _dash_cooldown_left - delta)
+
 	#COYOTE TIME & GRAVITY
 	if is_on_floor():
 		coyote_timer = coyote_time
 		jump_count = 0
-		can_dash = true 
+		refresh_dash_charge()
 	else:
 		coyote_timer -= delta
 		if current_state != State.DASH:
 			if is_on_wall() and velocity.y > 0:
 				velocity.y = wall_slide_speed
-				can_dash = true 
+				refresh_dash_charge()
 			else:
 				velocity.y += gravity * delta
 
@@ -274,7 +286,9 @@ func handle_movement_and_jumps():
 			velocity.y = jump_force
 			velocity.x = -facing_direction * wall_jump_push 
 			jump_count = 1 
-			can_dash = true 
+			# Gated like every other hand-back, so wall-jumping up a shaft is not
+			# a way to chain dashes past the cooldown.
+			refresh_dash_charge()
 			
 		# Normal Jump (Coyote)
 		elif coyote_timer > 0:
@@ -400,13 +414,39 @@ func clear_recoil() -> void:
 	recoil_x_start = 0.0
 	recoil_time_left = 0.0
 
+## Hand the dash back when the player is standing on something solid.
+##
+## Two things gate it, and both are load-bearing:
+##
+## The cooldown, or landing would be a free reset. Refreshing the dash on
+## contact is what lets it be used mid-air at all; doing that unconditionally
+## every frame the player touches ground turns the dash into a 0.2s no-cost
+## horizontal burst you can repeat forever, which is exactly as endless as it
+## sounds against a flier.
+##
+## The state check, because a ground dash never leaves the floor: DASH skips
+## gravity and zeroes velocity.y, so is_on_floor() stays true for the whole
+## 0.2s. Re-granting here un-spent the dash mid-flight, and since the press is
+## read as `is_action_just_pressed` a player leaning on the key could restart the
+## dash over and over and never once be off the ground.
+func refresh_dash_charge() -> void:
+	if current_state == State.DASH or _dash_cooldown_left > 0.0:
+		return
+	can_dash = true
+
 func try_to_dash():
+	# DASH refuses itself for the same reason it refuses to re-enter from the
+	# contact check: re-dashing mid-flight would reset the velocity and restart
+	# the timer, which is an unbounded dash rather than a cooldown.
 	# HEALING refuses too: a dash is a free cancel out of a channel, which
 	# together with i-frames made healing a no-risk panic button.
-	if not can_dash or current_state == State.PARRY or current_state == State.RECOVERY or current_state == State.HEALING: return
+	if not can_dash or current_state == State.DASH or current_state == State.PARRY or current_state == State.RECOVERY or current_state == State.HEALING: return
 	
 	current_state = State.DASH
 	can_dash = false 
+	# From the start of the dash, not the end, so the cooldown is what the player
+	# feels between dashes: dash_cooldown minus the 0.2s the dash itself lasts.
+	_dash_cooldown_left = dash_cooldown
 	
 	var input_dir = Input.get_axis("left", "right")
 	var dash_dir = input_dir if input_dir != 0 else facing_direction
@@ -569,8 +609,15 @@ func die() -> void:
 	current_state = State.DEAD
 	
 	# Drop the player's guard so nothing keeps hitting a corpse.
-	parry_box.monitoring = false
-	parry_box.monitorable = false
+	#
+	# Deferred, not assigned. A lethal bullet hit arrives inside
+	# enemy_bullet.gd's `_on_body_entered`, and Godot refuses to change an area's
+	# monitoring state from inside a physics signal callback: assigning directly
+	# raised "Function blocked during in/out signal" on every death and left the
+	# box monitorable. This is the same reason a successful parry drops the box
+	# with set_deferred().
+	parry_box.set_deferred("monitoring", false)
+	parry_box.set_deferred("monitorable", false)
 	can_parry = false
 	can_dash = false
 	# After the state change, so this cannot put the player back into IDLE on
@@ -612,8 +659,27 @@ func die() -> void:
 ## tempting -- mid-run, in the open -- was the one moment it could not start, so
 ## the player had to stop, let go, and start again. HEALING roots the player by
 ## itself, so a direction held at press time is simply overridden.
+##
+## The channel is also ground only. That is the same rule seen from the other
+## side: the hold is only a commitment because it roots the player somewhere
+## they were going to be shot at, and an airborne player has already lost the
+## mobility, so the cost is empty and the heal becomes a free 1 HP on the way
+## down. See the guard below.
 func try_to_heal() -> void:
 	if is_dead or current_state == State.HEALING: return
+
+	# Ground only, and checked before the state gate so a heal pressed in the air
+	# gets a reason rather than silence. In the air the channel costs the player
+	# nothing they still have: HEALING zeroes horizontal velocity and gravity
+	# runs regardless, so the "stand still and commit" that is the entire cost
+	# of a heal evaporates and 2 Sparks buys 1 HP off any ledge, at any point in
+	# a platformer's constant falling. Latches like the refusals below, so
+	# holding Q through a fall prints this once instead of every physics tick.
+	if not is_on_floor():
+		spawn_popup("LAND FIRST", Color(0.6, 0.6, 0.6))
+		_heal_locked = true
+		return
+
 	# Refuse from every state the player has already committed to, so a heal can
 	# never be folded into a dash, a parry, or the recovery penalty. See the note
 	# on try_to_parry() for why movement is not one of those states.
